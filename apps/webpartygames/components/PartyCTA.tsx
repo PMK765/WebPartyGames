@@ -26,6 +26,7 @@ function createRoomId() {
 export function PartyCTA({ slug }: Props) {
   const router = useRouter();
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [joinCode, setJoinCode] = useState("");
   const [copied, setCopied] = useState(false);
 
   const link = useMemo(() => {
@@ -86,6 +87,45 @@ export function PartyCTA({ slug }: Props) {
       <div className="text-xs text-slate-400">
         Share the link later when online multiplayer lands. For now, the party runs
         on this device only.
+      </div>
+
+      <div className="h-px bg-slate-800/80" />
+
+      <div className="space-y-2">
+        <div className="text-sm font-semibold text-slate-100">
+          Join an existing party
+        </div>
+        <div className="text-xs text-slate-400">
+          Enter a room code like <span className="font-mono">CZ3T56D7</span>.
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <input
+          value={joinCode}
+          onChange={(e) => setJoinCode(e.target.value)}
+          placeholder="Room code"
+          className="w-full md:w-56 rounded-xl border border-slate-800 bg-slate-950/30 px-4 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400 placeholder:text-slate-500"
+          aria-label="Room code"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          inputMode="text"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            const normalized = joinCode
+              .toUpperCase()
+              .replaceAll(" ", "")
+              .replaceAll("-", "")
+              .trim();
+            if (!normalized) return;
+            router.push(`/game/${slug}/play/${normalized}`);
+          }}
+          className="inline-flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-emerald-400 hover:bg-slate-900 transition"
+        >
+          Join
+        </button>
       </div>
     </section>
   );
