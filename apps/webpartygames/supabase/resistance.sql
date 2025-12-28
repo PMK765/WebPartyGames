@@ -338,6 +338,8 @@ begin
 end;
 $$;
 
+drop function if exists public.resistance_finalize_vote(text, integer, integer);
+
 create or replace function public.resistance_finalize_vote(
   room_id text,
   mission_number integer,
