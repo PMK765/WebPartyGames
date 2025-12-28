@@ -142,11 +142,6 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
         onPhaseChange?.(asShellPhase(roomRes.data.public_state.phase));
       }
 
-      if (myName) {
-        const up = await upsertMember(roomId, user.id, myName, credits);
-        if (!cancelled && up.error) setError(up.error.message);
-      }
-
       const list = await fetchMembers(roomId);
       if (!cancelled) {
         if (list.error) setError(list.error.message);
@@ -248,16 +243,16 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   }, [roomId, state, user]);
 
   useEffect(() => {
-    if (!state) return;
-    if (state.phase !== "voting") {
+    const phase = state?.phase ?? null;
+    if (phase !== "voting") {
       setMyVote(null);
       setVoteSubmitted(false);
     }
-    if (state.phase !== "mission") {
+    if (phase !== "mission") {
       setMissionSubmitted(false);
       setMissionChoice("success");
     }
-  }, [state?.phase]);
+  }, [state]);
 
   const updateState = (next: ResistancePublicState) => {
     if (!user) return;

@@ -42,18 +42,18 @@ function rotateLeader(players: readonly { id: string }[], leaderId: string | nul
   return players[nextIdx].id;
 }
 
-export function playerSlots(players: readonly { isSpectator: boolean }[]) {
+export function playerSlots(players: readonly { isSpectator: boolean }[]): number {
   return players.filter((p) => !p.isSpectator).length;
 }
 
-export function computeTeamSize(playerCount: number, mission: number) {
+export function computeTeamSize(playerCount: number, mission: number): number {
   const capped = clampInt(playerCount, 5, 10);
   const sizes = TEAM_SIZES[capped] ?? TEAM_SIZES[10];
   const idx = clampInt(mission - 1, 0, 4);
   return sizes[idx] ?? sizes[0];
 }
 
-export function computeSpyCount(playerCount: number) {
+export function computeSpyCount(playerCount: number): number {
   const capped = clampInt(playerCount, 5, 10);
   return SPY_COUNTS[capped] ?? 4;
 }
@@ -120,7 +120,7 @@ export function createInitialPublicState(roomId: string, hostId: string): Resist
 export function addOrUpdatePlayer(
   state: ResistancePublicState,
   player: { id: string; name: string; credits: number }
-) {
+): ResistancePublicState {
   const existing = state.players.find((p) => p.id === player.id);
   const nonSpectators = state.players.filter((p) => !p.isSpectator);
   const isSpectator = existing?.isSpectator ?? nonSpectators.length >= MAX_PLAYERS;
@@ -144,7 +144,7 @@ export function addOrUpdatePlayer(
   return { ...state, players: nextPlayers, leaderId };
 }
 
-export function removePlayer(state: ResistancePublicState, playerId: string) {
+export function removePlayer(state: ResistancePublicState, playerId: string): ResistancePublicState {
   if (!state.players.some((p) => p.id === playerId)) return state;
   const nextPlayers = state.players.filter((p) => p.id !== playerId);
   const active = nextPlayers.filter((p) => !p.isSpectator);
@@ -171,12 +171,12 @@ export function removePlayer(state: ResistancePublicState, playerId: string) {
   };
 }
 
-export function canStartGame(state: ResistancePublicState) {
+export function canStartGame(state: ResistancePublicState): boolean {
   const activeCount = playerSlots(state.players);
   return activeCount >= 5;
 }
 
-export function startGamePublic(state: ResistancePublicState) {
+export function startGamePublic(state: ResistancePublicState): ResistancePublicState {
   const activePlayers = state.players.filter((p) => !p.isSpectator);
   const activeCount = activePlayers.length;
   const teamSize = computeTeamSize(activeCount, 1);
@@ -200,7 +200,11 @@ export function startGamePublic(state: ResistancePublicState) {
   };
 }
 
-export function proposeTeam(state: ResistancePublicState, leaderId: string, teamIds: readonly string[]) {
+export function proposeTeam(
+  state: ResistancePublicState,
+  leaderId: string,
+  teamIds: readonly string[]
+): ResistancePublicState {
   if (state.phase !== "proposing") return state;
   if (state.leaderId !== leaderId) return state;
 
@@ -219,7 +223,10 @@ export function proposeTeam(state: ResistancePublicState, leaderId: string, team
   };
 }
 
-export function revealVotes(state: ResistancePublicState, votes: Record<string, boolean>) {
+export function revealVotes(
+  state: ResistancePublicState,
+  votes: Record<string, boolean>
+): ResistancePublicState {
   if (state.phase !== "voting") return state;
 
   const activeIds = state.players.filter((p) => !p.isSpectator).map((p) => p.id);
@@ -301,7 +308,7 @@ export function finishMission(
   };
 }
 
-export function advanceAfterMission(state: ResistancePublicState) {
+export function advanceAfterMission(state: ResistancePublicState): ResistancePublicState {
   if (state.phase !== "missionResult") return state;
 
   const activeCount = playerSlots(state.players);
