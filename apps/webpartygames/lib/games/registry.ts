@@ -1,6 +1,6 @@
 import type { GameDefinition, GameSlug } from "@/lib/games/types";
 
-const GAMES: readonly GameDefinition[] = [
+const ALL_GAMES: readonly GameDefinition[] = [
   {
     slug: "resistance",
     name: "The Resistance",
@@ -44,11 +44,11 @@ const GAMES: readonly GameDefinition[] = [
 ] as const;
 
 export function getAllGames() {
-  return GAMES;
+  return ALL_GAMES.filter((g) => g.slug === "resistance");
 }
 
 export function getGameBySlug(slug: GameSlug) {
-  return GAMES.find((g) => g.slug === slug);
+  return ALL_GAMES.find((g) => g.slug === slug);
 }
 
 

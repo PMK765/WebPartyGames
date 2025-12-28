@@ -113,6 +113,9 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   const [revealedRoles, setRevealedRoles] = useState<RevealRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const [nickname, setNickname] = useState("");
+  const [nicknameConfirmed, setNicknameConfirmed] = useState(false);
+
   const [teamDraft, setTeamDraft] = useState<Set<string>>(new Set());
   const [myVote, setMyVote] = useState<boolean | null>(null);
   const [voteSubmitted, setVoteSubmitted] = useState(false);
@@ -130,13 +133,23 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   }, [profile?.username, user]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("wpg_resistance_nickname_v1");
+    const initial = (saved ?? myName ?? "").trim();
+    if (!initial) return;
+    setNickname(initial);
+  }, [myName]);
+
+  useEffect(() => {
     if (!user) return;
 
     let cancelled = false;
 
     const init = async () => {
-      if (!myName) return;
-      const joined = await joinRoom(roomId, myName, credits);
+      if (!nicknameConfirmed) return;
+      const name = nickname.trim();
+      if (!name) return;
+      const joined = await joinRoom(roomId, name, credits);
       if (cancelled) return;
       if (joined.error) {
         setError(joined.error.message);
@@ -190,13 +203,15 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
         channelRef.current = null;
       }
     };
-  }, [credits, myName, onPhaseChange, roomId, user]);
+  }, [credits, nickname, nicknameConfirmed, onPhaseChange, roomId, user]);
 
   useEffect(() => {
     if (!user) return;
-    if (!myName) return;
-    void upsertMember(roomId, user.id, myName, credits);
-  }, [credits, myName, roomId, user]);
+    if (!nicknameConfirmed) return;
+    const name = nickname.trim();
+    if (!name) return;
+    void upsertMember(roomId, user.id, name, credits);
+  }, [credits, nickname, nicknameConfirmed, roomId, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -304,6 +319,54 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   }
 
   if (!state) {
+    if (!nicknameConfirmed) {
+      const suggested = nickname.trim() ? nickname : "";
+
+      return (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-2">
+            <div className="text-lg font-semibold tracking-tight text-slate-100">
+              Enter a nickname
+            </div>
+            <div className="text-sm text-slate-300">
+              This name is shown to other players in the room.
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-3">
+            <input
+              value={suggested}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="Nickname"
+              className="w-full rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-base text-slate-100 outline-none focus:border-emerald-400 placeholder:text-slate-500"
+              aria-label="Nickname"
+              autoCorrect="off"
+              autoCapitalize="words"
+              inputMode="text"
+            />
+            <button
+              type="button"
+              disabled={!nickname.trim()}
+              onClick={() => {
+                const next = nickname.trim().slice(0, 24);
+                setNickname(next);
+                if (typeof window !== "undefined") {
+                  window.localStorage.setItem("wpg_resistance_nickname_v1", next);
+                }
+                setNicknameConfirmed(true);
+              }}
+              className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
+            >
+              Join room
+            </button>
+            <div className="text-xs text-slate-500">
+              Room {roomId}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 text-sm text-slate-300">
         Joining room…

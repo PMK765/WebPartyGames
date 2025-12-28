@@ -30,7 +30,7 @@ export default function Page() {
           <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
             Games
           </h2>
-          <div className="text-sm text-slate-400">2 games</div>
+          <div className="text-sm text-slate-400">1 game</div>
         </div>
         <GameGrid games={games} />
       </section>
