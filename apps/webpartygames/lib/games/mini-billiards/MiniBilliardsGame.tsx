@@ -26,7 +26,7 @@ function asShellPhase(phase: MiniBilliardsState["phase"]) {
 }
 
 export function MiniBilliardsGame({ roomId, gameDefinition, onPhaseChange }: Props) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, error: authError } = useAuth();
   const { profile, credits, loading: profileLoading } = useProfile();
 
   const provider = useMemo(() => getSupabaseRealtimeProvider(), []);
@@ -90,7 +90,7 @@ export function MiniBilliardsGame({ roomId, gameDefinition, onPhaseChange }: Pro
   if (!user) {
     return (
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 text-sm text-slate-300">
-        You’re not signed in.
+        {authError ? `Auth error: ${authError}` : "You’re not signed in."}
       </div>
     );
   }

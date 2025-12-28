@@ -9,7 +9,7 @@ function guestLabel(userId: string) {
 }
 
 export function UserBadge() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, error: authError } = useAuth();
   const { profile, credits, loading: profileLoading } = useProfile();
 
   const loading = authLoading || profileLoading;
@@ -25,7 +25,7 @@ export function UserBadge() {
   if (!user) {
     return (
       <div className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">
-        Offline
+        {authError ? "Auth error" : "Offline"}
       </div>
     );
   }

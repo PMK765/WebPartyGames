@@ -16,6 +16,7 @@ export function useProfile() {
     profile: ctx.profile,
     setProfile: ctx.setProfile,
     credits,
+    error: ctx.profileError,
     loading: ctx.loading
   };
 }

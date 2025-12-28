@@ -10,7 +10,7 @@ export function useAuth() {
     throw new Error("useAuth must be used within AuthProvider");
   }
 
-  return { user: ctx.user, loading: ctx.loading };
+  return { user: ctx.user, loading: ctx.loading, error: ctx.authError };
 }
 
 
