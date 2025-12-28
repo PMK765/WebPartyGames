@@ -47,7 +47,7 @@ export function addPlayer(
   playerId: string,
   name: string,
   credits = 0
-) {
+): PrecisionShotState {
   if (state.players.some((p) => p.id === playerId)) return state;
   if (state.players.length >= 6) return state;
 
@@ -66,7 +66,7 @@ export function addPlayer(
   };
 }
 
-export function removePlayer(state: PrecisionShotState, playerId: string) {
+export function removePlayer(state: PrecisionShotState, playerId: string): PrecisionShotState {
   if (!state.players.some((p) => p.id === playerId)) return state;
 
   const { [playerId]: _removed, ...restScores } = state.totalScores;
@@ -85,7 +85,7 @@ export function removePlayer(state: PrecisionShotState, playerId: string) {
   };
 }
 
-export function startRound(state: PrecisionShotState) {
+export function startRound(state: PrecisionShotState): PrecisionShotState {
   const nextRound = clampInt(state.round + 1, 1, state.maxRounds);
   const targetValue = computeTarget(state.roomId, nextRound);
 
@@ -163,7 +163,7 @@ export function setPlayerPower(
   };
 }
 
-export function nextAfterReveal(state: PrecisionShotState) {
+export function nextAfterReveal(state: PrecisionShotState): PrecisionShotState {
   if (state.phase !== "revealing") return state;
   if (state.round >= state.maxRounds) return { ...state, phase: "finished" };
   return startRound(state);

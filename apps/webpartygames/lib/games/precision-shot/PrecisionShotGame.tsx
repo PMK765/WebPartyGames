@@ -333,7 +333,7 @@ export function PrecisionShotGame({ roomId, gameDefinition, onPhaseChange }: Pro
                 type="button"
                 onClick={() => {
                   const next = nextAfterReveal(state);
-                  update(next.phase === "finished" ? { ...next, phase: "finished" } : next);
+                  update(next);
                 }}
                 className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
               >

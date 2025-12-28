@@ -139,7 +139,7 @@ export function addPlayer(
   playerId: string,
   name: string,
   credits = 0
-) {
+): MiniBilliardsState {
   if (state.players.some((p) => p.id === playerId)) return state;
   if (state.players.length >= 4) return state;
 
@@ -153,7 +153,7 @@ export function addPlayer(
   return { ...state, players: nextPlayers, currentPlayerId };
 }
 
-export function removePlayer(state: MiniBilliardsState, playerId: string) {
+export function removePlayer(state: MiniBilliardsState, playerId: string): MiniBilliardsState {
   if (!state.players.some((p) => p.id === playerId)) return state;
   const nextPlayers = state.players.filter((p) => p.id !== playerId);
   const nextHostId =
@@ -165,19 +165,23 @@ export function removePlayer(state: MiniBilliardsState, playerId: string) {
   return { ...state, hostId: nextHostId, players: nextPlayers, currentPlayerId: nextCurrent };
 }
 
-export function advanceToNextPlayer(state: MiniBilliardsState) {
+export function advanceToNextPlayer(state: MiniBilliardsState): MiniBilliardsState {
   if (state.players.length === 0) return state;
   const idx = state.players.findIndex((p) => p.id === state.currentPlayerId);
   const nextIdx = idx >= 0 ? (idx + 1) % state.players.length : 0;
   return { ...state, currentPlayerId: state.players[nextIdx].id };
 }
 
-export function startGame(state: MiniBilliardsState) {
+export function startGame(state: MiniBilliardsState): MiniBilliardsState {
   if (state.players.length < 2) return state;
   return { ...state, phase: "aiming", currentPlayerId: state.hostId };
 }
 
-export function applyShot(state: MiniBilliardsState, angleDegrees: number, power: number) {
+export function applyShot(
+  state: MiniBilliardsState,
+  angleDegrees: number,
+  power: number
+): MiniBilliardsState {
   if (state.phase !== "aiming") return state;
 
   const cue = getCueBall(state);
