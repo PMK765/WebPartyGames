@@ -8,12 +8,12 @@ const GAMES: readonly GameDefinition[] = [
     description:
       "A phone-first social deduction game. Players vote to approve mission teams; spies try to sabotage missions without being discovered.",
     minPlayers: 5,
-    maxPlayers: 12,
+    maxPlayers: 10,
     categories: ["party"],
     modes: ["online-ready"],
     estimatedMinutes: 25,
     iconName: "mask",
-    tags: ["Party", "5–12 players", "Online-ready", "Hidden roles"],
+    tags: ["Party", "5–10 players", "Online-ready", "Hidden roles"],
     rules: [
       "Everyone gets a secret role: Resistance or Spy.",
       "Each mission, the leader proposes a team.",

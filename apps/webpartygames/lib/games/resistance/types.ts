@@ -2,6 +2,7 @@ export type ResistanceSide = "resistance" | "spy";
 
 export type ResistancePhase =
   | "lobby"
+  | "roleReveal"
   | "proposing"
   | "voting"
   | "mission"
@@ -36,8 +37,7 @@ export type ResistancePublicState = {
   teamSize: number;
 
   proposedTeamIds: string[];
-  votesRevealed: boolean;
-  votes: Record<string, boolean> | null;
+  voteCounts: { approve: number; reject: number } | null;
 
   missionTeamIds: string[];
   missionResult: { failCount: number; success: boolean } | null;

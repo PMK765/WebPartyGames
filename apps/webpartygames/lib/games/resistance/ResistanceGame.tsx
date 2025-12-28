@@ -8,12 +8,14 @@ import { useProfile } from "@/hooks/useProfile";
 import type { ResistancePublicState, ResistanceSide } from "./types";
 import {
   advanceAfterMission,
+  beginProposing,
   canStartGame,
   createInitialPublicState,
   finishMission,
   playerSlots,
   proposeTeam,
   revealVotes,
+  resetToLobbyKeepPlayers,
   startGamePublic
 } from "./logic";
 
@@ -49,21 +51,10 @@ type MemberRow = {
   joined_at: string;
 };
 
-async function fetchRoom(roomId: string) {
+async function joinRoom(roomId: string, name: string, credits: number) {
   return supabase
-    .from("resistance_rooms")
-    .select("room_id,host_id,public_state,updated_at")
-    .eq("room_id", roomId)
+    .rpc("resistance_join_room", { room_id: roomId, name, credits })
     .maybeSingle<RoomRow>();
-}
-
-async function upsertRoom(roomId: string, hostId: string) {
-  const initial = createInitialPublicState(roomId, hostId);
-  return supabase
-    .from("resistance_rooms")
-    .upsert({ room_id: roomId, host_id: hostId, public_state: initial }, { onConflict: "room_id" })
-    .select("room_id,host_id,public_state,updated_at")
-    .single<RoomRow>();
 }
 
 async function upsertMember(roomId: string, userId: string, name: string, credits: number) {
@@ -95,6 +86,22 @@ async function getMyRole(roomId: string, userId: string) {
   return res.data?.role ?? null;
 }
 
+type SpyRow = { user_id: string; name: string };
+
+async function fetchOtherSpies(roomId: string) {
+  const res = await supabase.rpc("resistance_get_spies", { room_id: roomId });
+  if (res.error) return { spies: [] as SpyRow[], error: res.error.message };
+  return { spies: (res.data as SpyRow[] | null) ?? [], error: null };
+}
+
+type RevealRow = { user_id: string; name: string; role: ResistanceSide };
+
+async function fetchRoleReveal(roomId: string) {
+  const res = await supabase.rpc("resistance_reveal_roles", { room_id: roomId });
+  if (res.error) return { roles: [] as RevealRow[], error: res.error.message };
+  return { roles: (res.data as RevealRow[] | null) ?? [], error: null };
+}
+
 export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const { user, loading: authLoading, error: authError } = useAuth();
   const { profile, credits, loading: profileLoading } = useProfile();
@@ -102,6 +109,8 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   const [state, setState] = useState<ResistancePublicState | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [role, setRole] = useState<ResistanceSide | null>(null);
+  const [otherSpies, setOtherSpies] = useState<SpyRow[]>([]);
+  const [revealedRoles, setRevealedRoles] = useState<RevealRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [teamDraft, setTeamDraft] = useState<Set<string>>(new Set());
@@ -109,6 +118,7 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   const [voteSubmitted, setVoteSubmitted] = useState(false);
   const [missionChoice, setMissionChoice] = useState<"success" | "fail">("success");
   const [missionSubmitted, setMissionSubmitted] = useState(false);
+  const [showRole, setShowRole] = useState(true);
 
   const loading = authLoading || profileLoading;
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -125,22 +135,19 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
     let cancelled = false;
 
     const init = async () => {
-      const roomRes = await fetchRoom(roomId);
+      if (!myName) return;
+      const joined = await joinRoom(roomId, myName, credits);
       if (cancelled) return;
-
-      if (!roomRes.data) {
-        const created = await upsertRoom(roomId, user.id);
-        if (cancelled) return;
-        if (created.error) {
-          setError(created.error.message);
-          return;
-        }
-        setState(created.data.public_state);
-        onPhaseChange?.(asShellPhase(created.data.public_state.phase));
-      } else {
-        setState(roomRes.data.public_state);
-        onPhaseChange?.(asShellPhase(roomRes.data.public_state.phase));
+      if (joined.error) {
+        setError(joined.error.message);
+        return;
       }
+      if (!joined.data) {
+        setError("Failed to join room");
+        return;
+      }
+      setState(joined.data.public_state);
+      onPhaseChange?.(asShellPhase(joined.data.public_state.phase));
 
       const list = await fetchMembers(roomId);
       if (!cancelled) {
@@ -183,7 +190,7 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
         channelRef.current = null;
       }
     };
-  }, [onPhaseChange, roomId, user]);
+  }, [credits, myName, onPhaseChange, roomId, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -228,13 +235,26 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   useEffect(() => {
     if (!user) return;
     if (!state) return;
-    if (state.phase === "lobby") return;
+    if (state.phase === "lobby") {
+      setRole(null);
+      setOtherSpies([]);
+      return;
+    }
 
     let cancelled = false;
     const run = async () => {
       const r = await getMyRole(roomId, user.id);
       if (cancelled) return;
       setRole(r);
+
+      if (r === "spy") {
+        const spies = await fetchOtherSpies(roomId);
+        if (cancelled) return;
+        if (spies.error) setError(spies.error);
+        else setOtherSpies(spies.spies.filter((s) => s.user_id !== user.id));
+      } else {
+        setOtherSpies([]);
+      }
     };
     void run();
     return () => {
@@ -299,6 +319,8 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   const myIsSpectator = state.players.find((p) => p.id === user.id)?.isSpectator ?? true;
 
   const lobbyReady = canStartGame(state);
+  const myOnMission = state.missionTeamIds.includes(user.id);
+  const myOnProposedTeam = state.proposedTeamIds.includes(user.id);
 
   return (
     <div className="space-y-6">
@@ -324,13 +346,35 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
 
       {state.phase !== "lobby" ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-4 space-y-2">
-          <div className="text-xs text-slate-400">Your role</div>
-          <div className="text-sm font-semibold text-slate-100">
-            {role ? (role === "spy" ? "Spy" : "Resistance") : "Loading role…"}
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs text-slate-400">Your role</div>
+            <button
+              type="button"
+              onClick={() => setShowRole((v) => !v)}
+              className="rounded-lg border border-slate-800 bg-slate-950/20 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-700 transition"
+            >
+              {showRole ? "Hide" : "View"}
+            </button>
           </div>
-          <div className="text-xs text-slate-500">
-            Keep it secret.
-          </div>
+
+          {showRole ? (
+            <div className="space-y-2">
+              <div className="text-base font-semibold text-slate-100">
+                {role ? (role === "spy" ? "You are a Spy" : "You are Resistance") : "Loading role…"}
+              </div>
+              {role === "spy" ? (
+                <div className="text-xs text-slate-300">
+                  Other spies:{" "}
+                  {otherSpies.length > 0
+                    ? otherSpies.map((s) => s.name).join(", ")
+                    : "—"}
+                </div>
+              ) : null}
+              <div className="text-xs text-slate-500">Keep it secret.</div>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-500">Hidden</div>
+          )}
         </div>
       ) : null}
 
@@ -386,6 +430,29 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
         ) : null}
       </section>
 
+      {state.phase === "roleReveal" ? (
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+          <div className="space-y-1">
+            <div className="text-sm font-semibold text-slate-100">Role reveal</div>
+            <div className="text-xs text-slate-400">
+              Check your role above. Spies see the other spies.
+            </div>
+          </div>
+
+          {isHost ? (
+            <button
+              type="button"
+              onClick={() => updateState(beginProposing(state))}
+              className="w-full rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
+            >
+              Begin mission 1
+            </button>
+          ) : (
+            <div className="text-sm text-slate-300">Waiting for host…</div>
+          )}
+        </section>
+      ) : null}
+
       {state.phase === "proposing" ? (
         <section className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
           <div className="flex items-start justify-between gap-3">
@@ -405,9 +472,26 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
             </div>
           </div>
 
+          {state.voteCounts ? (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/20 p-4 text-xs text-slate-300">
+              Last vote:{" "}
+              <span className="font-semibold text-slate-100 tabular-nums">
+                {state.voteCounts.approve}
+              </span>{" "}
+              approve /{" "}
+              <span className="font-semibold text-slate-100 tabular-nums">
+                {state.voteCounts.reject}
+              </span>{" "}
+              reject
+            </div>
+          ) : null}
+
           {isLeader && !myIsSpectator ? (
             <div className="space-y-3">
               <div className="text-sm text-slate-300">Select team:</div>
+              <div className="text-xs text-slate-500">
+                {teamDraft.size}/{state.teamSize} selected
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {activePlayers.map((p) => {
                   const selected = teamDraft.has(p.id);
@@ -534,6 +618,16 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
               >
                 {voteSubmitted ? "Vote submitted" : "Submit vote"}
               </button>
+
+              {voteSubmitted ? (
+                <div className="text-xs text-slate-400">
+                  You voted{" "}
+                  <span className="font-semibold text-slate-100">
+                    {myVote ? "Approve" : "Reject"}
+                  </span>
+                  .
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="text-sm text-slate-300">Spectators don’t vote.</div>
@@ -556,12 +650,13 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
                     setError(res.error.message);
                     return;
                   }
-                  const votes = (res.data?.votes as Record<string, boolean> | null) ?? null;
-                  if (!votes) {
-                    setError("Failed to load votes");
+                  const approve = Number(res.data?.approve_count ?? NaN);
+                  const reject = Number(res.data?.reject_count ?? NaN);
+                  if (!Number.isFinite(approve) || !Number.isFinite(reject)) {
+                    setError("Failed to load vote counts");
                     return;
                   }
-                  updateState(revealVotes(state, votes));
+                  updateState(revealVotes(state, { approve, reject }));
                 }}
                 className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
               >
@@ -600,7 +695,7 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
             </div>
           </div>
 
-          {state.missionTeamIds.includes(user.id) && !myIsSpectator ? (
+          {myOnMission && !myIsSpectator ? (
             <div className="space-y-3">
               <div className="text-sm text-slate-300">Your card</div>
               <div className="grid grid-cols-2 gap-2">
@@ -732,7 +827,7 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
           )}
 
           <div className="text-xs text-slate-500">
-            This is a faithful base-flow prototype. Voting is currently host-revealed; next iteration makes votes server-authoritative.
+            Votes and mission cards are secret per user; only aggregate outcomes are shared.
           </div>
         </section>
       ) : null}
@@ -764,23 +859,98 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
             </div>
           </div>
 
-          {isHost ? (
-            <button
-              type="button"
-              onClick={() => {
-                const next = createInitialPublicState(roomId, state.hostId);
-                updateState(next);
-                setRole(null);
-                setMyVote(null);
-                setMissionSubmitted(false);
-              }}
-              className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-emerald-400 hover:bg-slate-900 transition"
-            >
-              New game
-            </button>
-          ) : null}
+          <div className="space-y-3">
+            {revealedRoles.length > 0 ? (
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/20 p-4">
+                <div className="text-xs text-slate-400">Roles</div>
+                <div className="mt-2 space-y-2 text-sm">
+                  {revealedRoles.map((r) => (
+                    <div key={r.user_id} className="flex items-center justify-between gap-3">
+                      <div className="text-slate-200">{r.name}</div>
+                      <div className="text-xs font-semibold text-slate-100">
+                        {r.role === "spy" ? "Spy" : "Resistance"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {isHost ? (
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await fetchRoleReveal(roomId);
+                    if (res.error) setError(res.error);
+                    else setRevealedRoles(res.roles);
+                  }}
+                  className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-slate-700 hover:bg-slate-900 transition"
+                >
+                  Reveal roles
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = resetToLobbyKeepPlayers(state);
+                    updateState(next);
+                    setRole(null);
+                    setOtherSpies([]);
+                    setRevealedRoles([]);
+                    setMyVote(null);
+                    setVoteSubmitted(false);
+                    setMissionSubmitted(false);
+                    setMissionChoice("success");
+                    setShowRole(true);
+                  }}
+                  className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
+                >
+                  Play again (same room)
+                </button>
+              </div>
+            ) : null}
+          </div>
         </section>
       ) : null}
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-slate-100">Mission history</div>
+          <div className="text-xs text-slate-500">
+            {state.score.resistance}–{state.score.spies}
+          </div>
+        </div>
+        {state.history.length === 0 ? (
+          <div className="text-sm text-slate-300">No missions yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {state.history.map((h) => (
+              <div
+                key={h.mission}
+                className="rounded-2xl border border-slate-800 bg-slate-950/20 px-4 py-3"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-slate-100">
+                    Mission {h.mission}
+                  </div>
+                  <div
+                    className={[
+                      "text-xs font-semibold",
+                      h.success ? "text-emerald-300" : "text-rose-300"
+                    ].join(" ")}
+                  >
+                    {h.success ? "Success" : "Sabotaged"}
+                  </div>
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  Team size: {h.teamIds.length} · Fails: {h.failCount}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

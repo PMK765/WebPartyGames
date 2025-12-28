@@ -107,8 +107,7 @@ export function createInitialPublicState(roomId: string, hostId: string): Resist
     maxProposals: 5,
     teamSize: 2,
     proposedTeamIds: [],
-    votesRevealed: false,
-    votes: null,
+    voteCounts: null,
     missionTeamIds: [],
     missionResult: null,
     history: [],
@@ -156,18 +155,13 @@ export function removePlayer(state: ResistancePublicState, playerId: string): Re
   const proposedTeamIds = state.proposedTeamIds.filter((id) => id !== playerId);
   const missionTeamIds = state.missionTeamIds.filter((id) => id !== playerId);
 
-  const votes = state.votes
-    ? Object.fromEntries(Object.entries(state.votes).filter(([id]) => id !== playerId))
-    : null;
-
   return {
     ...state,
     hostId,
     leaderId,
     players: nextPlayers,
     proposedTeamIds,
-    missionTeamIds,
-    votes
+    missionTeamIds
   };
 }
 
@@ -184,20 +178,24 @@ export function startGamePublic(state: ResistancePublicState): ResistancePublicS
 
   return {
     ...state,
-    phase: "proposing",
+    phase: "roleReveal",
     mission: 1,
     proposalNumber: 1,
     teamSize,
     leaderId,
     proposedTeamIds: [],
-    votesRevealed: false,
-    votes: null,
+    voteCounts: null,
     missionTeamIds: [],
     missionResult: null,
     history: [],
     score: { resistance: 0, spies: 0 },
     winner: null
   };
+}
+
+export function beginProposing(state: ResistancePublicState): ResistancePublicState {
+  if (state.phase !== "roleReveal") return state;
+  return { ...state, phase: "proposing" };
 }
 
 export function proposeTeam(
@@ -216,8 +214,7 @@ export function proposeTeam(
     ...state,
     phase: "voting",
     proposedTeamIds: cleaned,
-    votesRevealed: false,
-    votes: null,
+    voteCounts: null,
     missionTeamIds: [],
     missionResult: null
   };
@@ -225,19 +222,14 @@ export function proposeTeam(
 
 export function revealVotes(
   state: ResistancePublicState,
-  votes: Record<string, boolean>
+  voteCounts: { approve: number; reject: number }
 ): ResistancePublicState {
   if (state.phase !== "voting") return state;
 
   const activeIds = state.players.filter((p) => !p.isSpectator).map((p) => p.id);
-  const voteMap: Record<string, boolean> = {};
-  for (const id of activeIds) {
-    if (typeof votes[id] !== "boolean") return state;
-    voteMap[id] = votes[id];
-  }
+  if (voteCounts.approve + voteCounts.reject !== activeIds.length) return state;
 
-  const approvals = Object.values(voteMap).filter(Boolean).length;
-  const rejected = approvals <= Math.floor(activeIds.length / 2);
+  const rejected = voteCounts.approve <= Math.floor(activeIds.length / 2);
 
   if (rejected) {
     const nextProposal = state.proposalNumber + 1;
@@ -250,8 +242,7 @@ export function revealVotes(
       return {
         ...state,
         phase: "finished",
-        votesRevealed: true,
-        votes: voteMap,
+        voteCounts,
         winner: "spies",
         score: { ...state.score, spies: 3 }
       };
@@ -262,17 +253,17 @@ export function revealVotes(
       phase: "proposing",
       proposalNumber: nextProposal,
       leaderId: nextLeaderId,
-      votesRevealed: true,
-      votes: voteMap,
-      proposedTeamIds: []
+      voteCounts,
+      proposedTeamIds: [],
+      missionTeamIds: [],
+      missionResult: null
     };
   }
 
   return {
     ...state,
     phase: "mission",
-    votesRevealed: true,
-    votes: voteMap,
+    voteCounts,
     missionTeamIds: state.proposedTeamIds,
     proposedTeamIds: []
   };
@@ -327,11 +318,27 @@ export function advanceAfterMission(state: ResistancePublicState): ResistancePub
     proposalNumber: 1,
     leaderId: nextLeaderId,
     teamSize,
-    votesRevealed: false,
-    votes: null,
+    voteCounts: null,
     missionTeamIds: [],
     proposedTeamIds: [],
     missionResult: null
+  };
+}
+
+export function resetToLobbyKeepPlayers(state: ResistancePublicState): ResistancePublicState {
+  return {
+    ...state,
+    phase: "lobby",
+    mission: 1,
+    proposalNumber: 1,
+    teamSize: computeTeamSize(playerSlots(state.players), 1),
+    proposedTeamIds: [],
+    voteCounts: null,
+    missionTeamIds: [],
+    missionResult: null,
+    history: [],
+    score: { resistance: 0, spies: 0 },
+    winner: null
   };
 }
 

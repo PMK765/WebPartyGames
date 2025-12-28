@@ -99,7 +99,7 @@ create policy resistance_rooms_select
 on public.resistance_rooms
 for select
 to authenticated
-using (true);
+using (public.resistance_is_member(room_id, auth.uid()) or host_id = auth.uid());
 
 drop policy if exists resistance_rooms_insert on public.resistance_rooms;
 create policy resistance_rooms_insert
@@ -114,7 +114,16 @@ on public.resistance_rooms
 for update
 to authenticated
 using (public.resistance_is_member(room_id, auth.uid()))
-with check (public.resistance_is_member(room_id, auth.uid()));
+with check (
+  public.resistance_is_member(room_id, auth.uid())
+  and (
+    auth.uid() = host_id
+    or (
+      public_state->>'phase' = 'proposing'
+      and auth.uid()::text = (public_state->>'leaderId')
+    )
+  )
+);
 
 drop policy if exists resistance_members_select on public.resistance_members;
 create policy resistance_members_select
@@ -150,10 +159,7 @@ create policy resistance_votes_select
 on public.resistance_votes
 for select
 to authenticated
-using (
-  public.resistance_is_member(room_id, auth.uid())
-  and (revealed = true or user_id = auth.uid())
-);
+using (public.resistance_is_member(room_id, auth.uid()) and user_id = auth.uid());
 
 drop policy if exists resistance_votes_insert on public.resistance_votes;
 create policy resistance_votes_insert
@@ -241,6 +247,74 @@ begin
 end;
 $$;
 
+create or replace function public.resistance_join_room(
+  room_id text,
+  name text,
+  credits integer
+)
+returns table (
+  room_id text,
+  host_id uuid,
+  public_state jsonb,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_room public.resistance_rooms%rowtype;
+  v_state jsonb;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select * into v_room
+  from public.resistance_rooms r
+  where r.room_id = resistance_join_room.room_id;
+
+  if v_room.room_id is null then
+    v_state := jsonb_build_object(
+      'roomId', resistance_join_room.room_id,
+      'hostId', auth.uid()::text,
+      'phase', 'lobby',
+      'players', jsonb_build_array(),
+      'leaderId', auth.uid()::text,
+      'mission', 1,
+      'maxMissions', 5,
+      'proposalNumber', 1,
+      'maxProposals', 5,
+      'teamSize', 2,
+      'proposedTeamIds', jsonb_build_array(),
+      'voteCounts', null,
+      'missionTeamIds', jsonb_build_array(),
+      'missionResult', null,
+      'history', jsonb_build_array(),
+      'score', jsonb_build_object('resistance', 0, 'spies', 0),
+      'winner', null
+    );
+
+    insert into public.resistance_rooms(room_id, host_id, public_state)
+    values (resistance_join_room.room_id, auth.uid(), v_state)
+    returning * into v_room;
+  end if;
+
+  insert into public.resistance_members(room_id, user_id, name, credits)
+  values (
+    resistance_join_room.room_id,
+    auth.uid(),
+    coalesce(nullif(trim(resistance_join_room.name), ''), 'Guest'),
+    greatest(0, coalesce(resistance_join_room.credits, 0))
+  )
+  on conflict (room_id, user_id)
+  do update set name = excluded.name, credits = excluded.credits;
+
+  return query
+  select v_room.room_id, v_room.host_id, v_room.public_state, v_room.updated_at;
+end;
+$$;
+
 create or replace function public.resistance_cast_vote(
   room_id text,
   mission_number integer,
@@ -269,7 +343,7 @@ create or replace function public.resistance_finalize_vote(
   mission_number integer,
   proposal_number integer
 )
-returns table (votes jsonb)
+returns table (approve_count integer, reject_count integer)
 language plpgsql
 security definer
 set search_path = public
@@ -279,6 +353,8 @@ declare
   v_player_ids uuid[];
   v_expected integer;
   v_actual integer;
+  v_approve integer;
+  v_reject integer;
 begin
   select r.host_id into v_host from public.resistance_rooms r where r.room_id = resistance_finalize_vote.room_id;
   if v_host is null then
@@ -315,11 +391,77 @@ begin
     and proposal_number = resistance_finalize_vote.proposal_number;
 
   return query
-  select jsonb_object_agg(v.user_id::text, v.vote) as votes
+  select
+    sum(case when v.vote then 1 else 0 end)::integer as approve_count,
+    sum(case when v.vote then 0 else 1 end)::integer as reject_count
   from public.resistance_votes v
   where v.room_id = resistance_finalize_vote.room_id
     and v.mission_number = resistance_finalize_vote.mission_number
     and v.proposal_number = resistance_finalize_vote.proposal_number;
+end;
+$$;
+
+create or replace function public.resistance_get_spies(room_id text)
+returns table (user_id uuid, name text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text;
+begin
+  select rr.role into v_role
+  from public.resistance_roles rr
+  where rr.room_id = resistance_get_spies.room_id
+    and rr.user_id = auth.uid();
+
+  if v_role is null then
+    raise exception 'role not dealt';
+  end if;
+  if v_role <> 'spy' then
+    return;
+  end if;
+
+  return query
+  select m.user_id, m.name
+  from public.resistance_roles rr
+  join public.resistance_members m
+    on m.room_id = rr.room_id and m.user_id = rr.user_id
+  where rr.room_id = resistance_get_spies.room_id
+    and rr.role = 'spy';
+end;
+$$;
+
+create or replace function public.resistance_reveal_roles(room_id text)
+returns table (user_id uuid, name text, role text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_host uuid;
+  v_phase text;
+begin
+  select r.host_id, (r.public_state->>'phase') into v_host, v_phase
+  from public.resistance_rooms r
+  where r.room_id = resistance_reveal_roles.room_id;
+
+  if v_host is null then
+    raise exception 'room not found';
+  end if;
+  if auth.uid() <> v_host then
+    raise exception 'only host can reveal roles';
+  end if;
+  if v_phase <> 'finished' then
+    raise exception 'game not finished';
+  end if;
+
+  return query
+  select m.user_id, m.name, rr.role
+  from public.resistance_members m
+  join public.resistance_roles rr
+    on rr.room_id = m.room_id and rr.user_id = m.user_id
+  where m.room_id = resistance_reveal_roles.room_id;
 end;
 $$;
 
