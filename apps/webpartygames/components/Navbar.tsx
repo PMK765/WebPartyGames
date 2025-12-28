@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { UserBadge } from "@/components/UserBadge";
 
 export function Navbar() {
   return (
@@ -25,6 +26,7 @@ export function Navbar() {
           >
             Games
           </Link>
+          <UserBadge />
         </div>
       </nav>
     </header>

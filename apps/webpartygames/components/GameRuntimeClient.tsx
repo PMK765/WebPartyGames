@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import type { GameDefinition } from "@/lib/games/types";
-import { getLocalRealtimeProvider } from "@/lib/realtime/local";
 import { GameShell, type GamePhase } from "@/components/GameShell";
-import { TapBattle } from "@/lib/games/tap-battle/TapBattle";
-import { ComingSoon } from "@/lib/games/coming-soon/ComingSoon";
+import { PrecisionShotGame } from "@/lib/games/precision-shot/PrecisionShotGame";
+import { MiniBilliardsGame } from "@/lib/games/mini-billiards/MiniBilliardsGame";
 
 type Props = {
   game: GameDefinition;
@@ -13,24 +12,18 @@ type Props = {
 };
 
 export function GameRuntimeClient({ game, roomId }: Props) {
-  const realtime = getLocalRealtimeProvider();
   const [phase, setPhase] = useState<GamePhase>("lobby");
 
   const steps =
-    game.slug === "tap-battle"
-      ? ["Choose 2–4 players", "Start the round", "Tap fast", "First to target wins"]
-      : ["This game is not playable yet", "Check back soon"];
+    game.slug === "precision-shot"
+      ? ["Join the room", "Host starts the game", "Pick power each round", "Closest wins +1"]
+      : ["Join the room", "Host starts the game", "Aim and shoot on your turn", "Pot targets for points"];
 
   const content =
-    game.slug === "tap-battle" ? (
-      <TapBattle
-        game={game}
-        roomId={roomId}
-        realtimeProvider={realtime}
-        onPhaseChange={setPhase}
-      />
+    game.slug === "precision-shot" ? (
+      <PrecisionShotGame roomId={roomId} gameDefinition={game} onPhaseChange={setPhase} />
     ) : (
-      <ComingSoon gameName={game.name} />
+      <MiniBilliardsGame roomId={roomId} gameDefinition={game} onPhaseChange={setPhase} />
     );
 
   return (

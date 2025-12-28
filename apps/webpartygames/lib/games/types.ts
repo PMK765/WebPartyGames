@@ -1,8 +1,8 @@
-export type GameCategory = "party" | "real-time" | "turn-based";
+export type GameCategory = "party" | "real-time" | "turn-based" | "sports";
 
 export type GameMode = "same-device" | "online-ready";
 
-export const GAME_SLUGS = ["tap-battle", "emoji-guess", "word-duel"] as const;
+export const GAME_SLUGS = ["precision-shot", "mini-billiards"] as const;
 
 export type GameSlug = (typeof GAME_SLUGS)[number];
 

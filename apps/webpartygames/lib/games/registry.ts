@@ -2,63 +2,43 @@ import type { GameDefinition, GameSlug } from "@/lib/games/types";
 
 const GAMES: readonly GameDefinition[] = [
   {
-    slug: "tap-battle",
-    name: "Tap Battle",
-    shortDescription: "Split-screen speed tapping. First to the target wins.",
+    slug: "precision-shot",
+    name: "Precision Shot",
+    shortDescription: "Secret target. Pick your power. Chaos decides the clutch.",
     description:
-      "A fast same-device showdown. Each player taps their zone as quickly as possible. First to reach the target wins the round.",
+      "A chaotic target-shooting party game. Everyone picks a power from 0–100, a hidden chaos offset hits, and the closest final shot wins the round.",
+    minPlayers: 2,
+    maxPlayers: 6,
+    categories: ["party"],
+    modes: ["online-ready"],
+    estimatedMinutes: 8,
+    iconName: "target",
+    tags: ["Party", "2–6 players", "Online-ready", "Realtime room"],
+    rules: [
+      "Join the room (2–6 players).",
+      "Each round, pick a power from 0–100.",
+      "A hidden chaos offset is applied to everyone.",
+      "Closest final shot to the secret target wins +1."
+    ]
+  },
+  {
+    slug: "mini-billiards",
+    name: "Mini Billiards",
+    shortDescription: "Turn-based pool-lite with simple aiming and quick shots.",
+    description:
+      "A tiny top-down billiards table. Take turns setting angle and power, shoot the cue ball, and pot targets for points.",
     minPlayers: 2,
     maxPlayers: 4,
-    categories: ["real-time", "party"],
-    modes: ["same-device", "online-ready"],
-    estimatedMinutes: 2,
-    iconName: "hand-tap",
-    tags: ["Party", "2–4 players", "Same device", "Real-time"],
-    rules: [
-      "Choose 2–4 players.",
-      "Start the round to reset scores.",
-      "Each player taps only their zone.",
-      "First to reach the target wins."
-    ]
-  },
-  {
-    slug: "emoji-guess",
-    name: "Emoji Guess",
-    shortDescription: "Guess the phrase from emojis. Quick, loud, chaotic.",
-    description:
-      "One screen, everyone guesses. Read the emojis, shout your answer, and keep score however you want. Online-ready architecture, same-device MVP.",
-    minPlayers: 2,
-    maxPlayers: 12,
-    categories: ["party"],
-    modes: ["same-device", "online-ready"],
+    categories: ["sports", "turn-based"],
+    modes: ["online-ready"],
     estimatedMinutes: 10,
-    iconName: "emoji",
-    tags: ["Party", "2–12 players", "Same device", "Online-ready"],
+    iconName: "billiards",
+    tags: ["Sports", "2–4 players", "Online-ready", "Turn-based"],
     rules: [
-      "One person hosts and reads the prompt.",
-      "Everyone guesses out loud.",
-      "Award points however you like.",
-      "Rotate host and keep playing."
-    ]
-  },
-  {
-    slug: "word-duel",
-    name: "Word Duel",
-    shortDescription: "Turn-based word challenges with fast rounds.",
-    description:
-      "A simple turn-based word duel on one device. Pass the screen, follow the prompt, and keep the streak alive. Online-ready later.",
-    minPlayers: 2,
-    maxPlayers: 8,
-    categories: ["party", "turn-based"],
-    modes: ["same-device", "online-ready"],
-    estimatedMinutes: 8,
-    iconName: "type",
-    tags: ["Party", "2–8 players", "Same device", "Turn-based"],
-    rules: [
-      "Pick a starting player.",
-      "Follow the prompt and enter a word.",
-      "Pass the device to the next player.",
-      "If someone can’t answer, the round ends."
+      "Join the room (2–4 players).",
+      "On your turn, set angle and power.",
+      "Pot target balls for +1 each.",
+      "Potting the cue ball costs −1."
     ]
   }
 ] as const;
