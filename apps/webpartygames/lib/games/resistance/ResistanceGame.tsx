@@ -53,7 +53,7 @@ type MemberRow = {
 
 async function joinRoom(roomId: string, name: string, credits: number) {
   return supabase
-    .rpc("resistance_join_room", { room_id: roomId, name, credits })
+    .rpc("resistance_join_room", { p_room_id: roomId, p_name: name, p_credits: credits })
     .maybeSingle<RoomRow>();
 }
 

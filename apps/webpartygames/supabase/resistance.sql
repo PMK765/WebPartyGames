@@ -248,9 +248,9 @@ end;
 $$;
 
 create or replace function public.resistance_join_room(
-  room_id text,
-  name text,
-  credits integer
+  p_room_id text,
+  p_name text,
+  p_credits integer
 )
 returns table (
   room_id text,
@@ -272,11 +272,11 @@ begin
 
   select * into v_room
   from public.resistance_rooms r
-  where r.room_id = resistance_join_room.room_id;
+  where r.room_id = resistance_join_room.p_room_id;
 
   if v_room.room_id is null then
     v_state := jsonb_build_object(
-      'roomId', resistance_join_room.room_id,
+      'roomId', resistance_join_room.p_room_id,
       'hostId', auth.uid()::text,
       'phase', 'lobby',
       'players', jsonb_build_array(),
@@ -296,16 +296,16 @@ begin
     );
 
     insert into public.resistance_rooms(room_id, host_id, public_state)
-    values (resistance_join_room.room_id, auth.uid(), v_state)
+    values (resistance_join_room.p_room_id, auth.uid(), v_state)
     returning * into v_room;
   end if;
 
   insert into public.resistance_members(room_id, user_id, name, credits)
   values (
-    resistance_join_room.room_id,
+    resistance_join_room.p_room_id,
     auth.uid(),
-    coalesce(nullif(trim(resistance_join_room.name), ''), 'Guest'),
-    greatest(0, coalesce(resistance_join_room.credits, 0))
+    coalesce(nullif(trim(resistance_join_room.p_name), ''), 'Guest'),
+    greatest(0, coalesce(resistance_join_room.p_credits, 0))
   )
   on conflict (room_id, user_id)
   do update set name = excluded.name, credits = excluded.credits;
