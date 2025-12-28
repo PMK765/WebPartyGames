@@ -2,23 +2,23 @@ import type { GameDefinition, GameSlug } from "@/lib/games/types";
 
 const GAMES: readonly GameDefinition[] = [
   {
-    slug: "precision-shot",
-    name: "Precision Shot",
-    shortDescription: "Secret target. Pick your power. Chaos decides the clutch.",
+    slug: "resistance",
+    name: "The Resistance",
+    shortDescription: "Social deduction: vote on teams, run missions, find the spies.",
     description:
-      "A chaotic target-shooting party game. Everyone picks a power from 0–100, a hidden chaos offset hits, and the closest final shot wins the round.",
-    minPlayers: 2,
-    maxPlayers: 6,
+      "A phone-first social deduction game. Players vote to approve mission teams; spies try to sabotage missions without being discovered.",
+    minPlayers: 5,
+    maxPlayers: 12,
     categories: ["party"],
     modes: ["online-ready"],
-    estimatedMinutes: 8,
-    iconName: "target",
-    tags: ["Party", "2–6 players", "Online-ready", "Realtime room"],
+    estimatedMinutes: 25,
+    iconName: "mask",
+    tags: ["Party", "5–12 players", "Online-ready", "Hidden roles"],
     rules: [
-      "Join the room (2–6 players).",
-      "Each round, pick a power from 0–100.",
-      "A hidden chaos offset is applied to everyone.",
-      "Closest final shot to the secret target wins +1."
+      "Everyone gets a secret role: Resistance or Spy.",
+      "Each mission, the leader proposes a team.",
+      "Everyone votes to approve or reject the team.",
+      "Approved teams run a mission; spies may sabotage."
     ]
   },
   {

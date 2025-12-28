@@ -3,8 +3,8 @@
 import { useState } from "react";
 import type { GameDefinition } from "@/lib/games/types";
 import { GameShell, type GamePhase } from "@/components/GameShell";
-import { PrecisionShotGame } from "@/lib/games/precision-shot/PrecisionShotGame";
 import { MiniBilliardsGame } from "@/lib/games/mini-billiards/MiniBilliardsGame";
+import { ResistanceGame } from "@/lib/games/resistance/ResistanceGame";
 
 type Props = {
   game: GameDefinition;
@@ -15,13 +15,13 @@ export function GameRuntimeClient({ game, roomId }: Props) {
   const [phase, setPhase] = useState<GamePhase>("lobby");
 
   const steps =
-    game.slug === "precision-shot"
-      ? ["Join the room", "Host starts the game", "Pick power each round", "Closest wins +1"]
+    game.slug === "resistance"
+      ? ["Join the room", "Host starts the game", "Vote on teams", "Spies sabotage missions"]
       : ["Join the room", "Host starts the game", "Aim and shoot on your turn", "Pot targets for points"];
 
   const content =
-    game.slug === "precision-shot" ? (
-      <PrecisionShotGame roomId={roomId} gameDefinition={game} onPhaseChange={setPhase} />
+    game.slug === "resistance" ? (
+      <ResistanceGame roomId={roomId} gameDefinition={game} onPhaseChange={setPhase} />
     ) : (
       <MiniBilliardsGame roomId={roomId} gameDefinition={game} onPhaseChange={setPhase} />
     );
