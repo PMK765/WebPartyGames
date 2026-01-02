@@ -11,10 +11,9 @@ import { supabase } from "@/lib/supabaseClient";
 import type { Card, WarState } from "./types";
 import {
   addOrUpdatePlayer,
-  attemptResolve,
   canStart,
   createInitialState,
-  markPlayerReady,
+  handleFlip,
   restart,
   startGame
 } from "./logic";
@@ -36,13 +35,6 @@ function asShellPhase(phase: WarState["phase"]) {
   return "playing";
 }
 
-function suitSymbol(suit: Card["suit"]) {
-  if (suit === "spades") return "♠";
-  if (suit === "hearts") return "♥";
-  if (suit === "diamonds") return "♦";
-  return "♣";
-}
-
 function rankLabel(rank: Card["rank"]) {
   if (rank === 11) return "J";
   if (rank === 12) return "Q";
@@ -56,55 +48,6 @@ function cardFile(card: Card) {
   return `${rank}_of_${card.suit}.svg`;
 }
 
-function CardBack() {
-  return (
-    <img
-      src="/cards/card_back.svg"
-      alt="Card back"
-      className="block h-full w-full rounded-2xl object-contain shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
-      draggable={false}
-      loading="eager"
-    />
-  );
-}
-
-function FlipCard({
-  card,
-  flipped,
-  highlight
-}: {
-  card: Card | null;
-  flipped: boolean;
-  highlight: boolean;
-}) {
-  const frontSrc = card ? `/cards/${cardFile(card)}` : "/cards/card_back.svg";
-  return (
-    <div
-      className={[
-        "relative h-32 w-24 shrink-0 md:h-40 md:w-28",
-        highlight ? "wpg-winner-pop" : ""
-      ].join(" ")}
-    >
-      <div className="absolute inset-0">
-        <CardBack />
-      </div>
-      <img
-        src={frontSrc}
-        alt={card ? `${rankLabel(card.rank)} of ${card.suit}` : "Card"}
-        className={[
-          "absolute inset-0 block h-full w-full rounded-2xl object-contain shadow-[0_18px_40px_rgba(0,0,0,0.35)] transition-opacity duration-300",
-          flipped ? "opacity-100" : "opacity-0"
-        ].join(" ")}
-        draggable={false}
-        loading="eager"
-        onError={(e) => {
-          e.currentTarget.src = "/cards/card_back.svg";
-        }}
-      />
-    </div>
-  );
-}
-
 export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const { user, loading: authLoading, error: authError } = useAuth();
   const { profile, credits, loading: profileLoading } = useProfile();
@@ -112,19 +55,13 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const [state, setState] = useState<WarState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [commandReady, setCommandReady] = useState(false);
-  const [animTick, setAnimTick] = useState(0);
-  const [animating, setAnimating] = useState(false);
-  const [flipStage, setFlipStage] = useState<"back" | "front">("back");
-  const [revealLock, setRevealLock] = useState(false);
 
   const handleRef = useRef<RealtimeRoomHandle<WarState> | null>(null);
   const commandChannelRef = useRef<RealtimeChannel | null>(null);
   const stateRef = useRef<WarState | null>(null);
-  const prevFaceUpRef = useRef<Record<string, Card | null>>({});
   const winAudioRef = useRef<HTMLAudioElement | null>(null);
   const loseAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastRevealNonceRef = useRef<number>(-1);
-  const lastOutcomeNonceRef = useRef<number>(-1);
 
   const loading = authLoading || profileLoading;
 
@@ -170,7 +107,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       handleRef.current.updateState(next);
     });
 
-    commandChannel.on("broadcast", { event: "flip-ready" }, (message) => {
+    commandChannel.on("broadcast", { event: "flip" }, (message) => {
       const payload = (message as unknown as { payload?: { id: string } }).payload;
       if (!payload) return;
       if (!handleRef.current) return;
@@ -179,9 +116,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       if (current.phase !== "playing") return;
       if (current.hostId !== user.id) return;
 
-      const staged = markPlayerReady(current, payload.id);
-      const resolved = attemptResolve(staged);
-      handleRef.current.updateState(resolved);
+      const next = handleFlip(current, payload.id);
+      handleRef.current.updateState(next);
     });
 
     void commandChannel.subscribe((status) => {
@@ -192,124 +128,71 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
     return () => {
       handle.leave();
-      handleRef.current = null;
-      if (commandChannelRef.current) {
-        void supabase.removeChannel(commandChannelRef.current);
-        commandChannelRef.current = null;
-      }
-      setCommandReady(false);
+      void commandChannel.unsubscribe();
     };
-  }, [onPhaseChange, roomId, user]);
+  }, [credits, myName, onPhaseChange, roomId, user]);
 
   useEffect(() => {
-    if (!user) return;
-    if (!myName) return;
-    if (!commandReady) return;
+    if (!user || !myName || !commandReady) return;
     const chan = commandChannelRef.current;
     if (!chan) return;
-    void chan.send({ type: "broadcast", event: "join", payload: { id: user.id, name: myName, credits } });
+    void chan.send({
+      type: "broadcast",
+      event: "join",
+      payload: { id: user.id, name: myName, credits }
+    });
   }, [commandReady, credits, myName, user]);
 
   useEffect(() => {
-    if (!user) return;
-    if (!handleRef.current) return;
-    if (state) return;
-
-    const isCreator =
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(`wpg_creator:war:${roomId}`) === "1";
-
-    const delay = isCreator ? 50 : (Math.abs(Array.from(`${roomId}:${user.id}`).reduce((a, c) => a + c.charCodeAt(0), 0)) % 500) + 250;
-
-    const id = window.setTimeout(() => {
-      if (stateRef.current) return;
-      const initial = createInitialState(roomId, user.id);
-      const seeded = addOrUpdatePlayer(initial, { id: user.id, name: myName ?? guestLabel(user.id), credits });
-      handleRef.current?.updateState(seeded);
-    }, delay);
-
-    return () => window.clearTimeout(id);
-  }, [credits, myName, roomId, state, user]);
-
-  const update = (next: WarState) => {
-    if (!handleRef.current) return;
-    setState(next);
-    onPhaseChange?.(asShellPhase(next.phase));
-    handleRef.current.updateState(next);
-  };
-
-  useEffect(() => {
-    if (!state) return;
-    if (state.phase !== "playing") return;
-    if (!state.revealAt) return;
+    if (!user || !state || state.phase !== "playing") return;
     if (state.revealNonce === lastRevealNonceRef.current) return;
     lastRevealNonceRef.current = state.revealNonce;
 
-    setAnimTick((t) => t + 1);
-    setAnimating(true);
-    setRevealLock(true);
-    setFlipStage("back");
-    const t1 = window.setTimeout(() => setFlipStage("front"), 80);
-    const t2 = window.setTimeout(() => setAnimating(false), 900);
-    const t3 = window.setTimeout(() => setRevealLock(false), 900);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
-    };
-  }, [state]);
-
-  useEffect(() => {
-    if (!user) return;
-    if (!state) return;
-    if (state.phase !== "playing") return;
-    if (state.revealNonce === lastOutcomeNonceRef.current) return;
-    if (!state.battle.winnerId) return;
-    lastOutcomeNonceRef.current = state.revealNonce;
-    const isWin = state.battle.winnerId === user.id;
-    const a = isWin ? winAudioRef.current : loseAudioRef.current;
-    if (!a) return;
-    a.currentTime = 0;
-    void a.play();
+    if (state.battle.winnerId) {
+      const isWin = state.battle.winnerId === user.id;
+      const audio = isWin ? winAudioRef.current : loseAudioRef.current;
+      if (audio) {
+        audio.currentTime = 0;
+        void audio.play();
+      }
+    }
   }, [state, user]);
 
+  const update = (next: WarState) => {
+    handleRef.current?.updateState(next);
+  };
+
   if (loading) {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 text-sm text-slate-300">
-        Loading…
-      </div>
-    );
+    return <div className="text-sm text-slate-400">Loading...</div>;
   }
 
-  if (!user) {
+  if (authError || !user) {
     return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 text-sm text-slate-300">
-        {authError ? `Auth error: ${authError}` : "You’re not signed in."}
+      <div className="rounded-2xl border border-rose-900 bg-rose-950/20 p-4 text-sm text-rose-200">
+        {authError ?? "Not authenticated"}
       </div>
     );
   }
 
   if (!state) {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 text-sm text-slate-300">
-        Joining room…
-      </div>
-    );
+    return <div className="text-sm text-slate-400">Connecting...</div>;
   }
 
   const meHost = state.hostId === user.id;
   const players = state.players.slice(0, 2);
   const ready = canStart(state);
   const battle = state.battle;
-  const winnerName = battle.winnerId ? state.players.find((p) => p.id === battle.winnerId)?.name ?? null : null;
-  const pileCounts = Object.fromEntries(players.map((p) => [p.id, state.piles[p.id]?.length ?? 0]));
-  const potCount = battle.pot.length;
-  const totalCards = Object.values(state.piles).reduce((sum, pile) => sum + (pile?.length ?? 0), 0);
-  const displayedTotal = players.reduce((sum, p) => sum + (state.piles[p.id]?.length ?? 0), 0);
-  const myReady = user ? state.ready[user.id] === true : false;
-  const otherId = players.find((p) => p.id !== user.id)?.id ?? null;
-  const otherReady = otherId ? state.ready[otherId] === true : false;
-  const bothReady = myReady && otherReady;
+  const [a, b] = players;
+  const aId = a?.id ?? "";
+  const bId = b?.id ?? "";
+  const myPile = state.piles[user.id] ?? [];
+  const otherPlayer = players.find((p) => p.id !== user.id);
+  const otherPile = otherPlayer ? state.piles[otherPlayer.id] ?? [] : [];
+  const myCard = battle.faceUp[user.id] ?? null;
+  const otherCard = otherPlayer ? battle.faceUp[otherPlayer.id] ?? null : null;
+  const myReady = state.ready[user.id] === true;
+  const otherReady = otherPlayer ? state.ready[otherPlayer.id] === true : false;
+  const totalCards = Object.values(state.piles).reduce((sum, pile) => sum + pile.length, 0);
 
   return (
     <div className="space-y-6">
@@ -324,14 +207,11 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
           <div className="space-y-1">
             <div className="text-sm font-semibold text-slate-100">{gameDefinition.name}</div>
             <div className="text-xs text-slate-400">
-              {state.players.length} players · Cards {pileCounts[players[0]?.id ?? ""] ?? 0}–{pileCounts[players[1]?.id ?? ""] ?? 0} · Pot {potCount}
+              {state.players.length} players · Total cards: {totalCards}
             </div>
           </div>
           <div className="text-xs text-slate-500">
-            Host:{" "}
-            <span className="font-semibold text-slate-200">
-              {state.players.find((p) => p.id === state.hostId)?.name ?? "—"}
-            </span>
+            Host: <span className="font-semibold text-slate-200">{state.players.find((p) => p.id === state.hostId)?.name ?? "—"}</span>
           </div>
         </div>
 
@@ -340,7 +220,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
             <div className="text-sm text-slate-300">Need exactly 2 players for War.</div>
             <button
               type="button"
-              disabled={!meHost || !ready || state.players.length !== 2}
+              disabled={!meHost || !ready}
               onClick={() => {
                 const base = createInitialState(roomId, user.id);
                 base.players = state.players.slice(0, 2);
@@ -356,51 +236,73 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
         {state.phase === "playing" ? (
           <div className="space-y-4">
             <div className="text-xs text-slate-400 text-center">
-              Round {state.round} · You: {pileCounts[user.id] ?? 0} cards · Opponent: {pileCounts[otherId ?? ""] ?? 0} cards · Pot: {potCount}
+              Round {state.round} · You: {myPile.length} · Opponent: {otherPile.length} · Pot: {battle.pot.length}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              {players.map((p) => {
-                const card = battle.faceUp[p.id] ?? null;
-                const isMe = p.id === user.id;
-                const highlight = battle.winnerId === p.id && battle.step === "resolved";
-                return (
-                  <div key={p.id} className="space-y-2">
-                    <div className="text-xs font-semibold text-slate-300 text-center">
-                      {isMe ? "You" : "Opponent"}
-                    </div>
-                    <FlipCard card={card} flipped={!!card} highlight={highlight} />
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-center gap-4">
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-xs font-semibold text-slate-300">You</div>
+                <div className="relative h-28 w-20">
+                  {myCard ? (
+                    <img
+                      src={`/cards/${cardFile(myCard)}`}
+                      alt={`${rankLabel(myCard.rank)} of ${myCard.suit}`}
+                      className={`block h-full w-full rounded-lg object-contain shadow-lg ${battle.winnerId === user.id ? "ring-2 ring-emerald-400" : ""}`}
+                      draggable={false}
+                      loading="eager"
+                    />
+                  ) : (
+                    <img
+                      src="/cards/card_back.svg"
+                      alt="Card back"
+                      className="block h-full w-full rounded-lg object-contain shadow-lg"
+                      draggable={false}
+                      loading="eager"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-xs font-semibold text-slate-300">Opponent</div>
+                <div className="relative h-28 w-20">
+                  {otherCard ? (
+                    <img
+                      src={`/cards/${cardFile(otherCard)}`}
+                      alt={`${rankLabel(otherCard.rank)} of ${otherCard.suit}`}
+                      className={`block h-full w-full rounded-lg object-contain shadow-lg ${battle.winnerId === otherPlayer?.id ? "ring-2 ring-emerald-400" : ""}`}
+                      draggable={false}
+                      loading="eager"
+                    />
+                  ) : (
+                    <img
+                      src="/cards/card_back.svg"
+                      alt="Card back"
+                      className="block h-full w-full rounded-lg object-contain shadow-lg"
+                      draggable={false}
+                      loading="eager"
+                    />
+                  )}
+                </div>
+              </div>
             </div>
+
+            {battle.message ? (
+              <div className="text-center text-sm font-semibold text-emerald-300">{battle.message}</div>
+            ) : null}
 
             <button
               type="button"
-              disabled={state.players.length !== 2 || myReady}
+              disabled={myReady}
               onClick={() => {
                 const chan = commandChannelRef.current;
                 if (!chan) return;
-                void chan.send({ type: "broadcast", event: "flip-ready", payload: { id: user.id } });
+                void chan.send({ type: "broadcast", event: "flip", payload: { id: user.id } });
               }}
               className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
             >
-              {myReady ? "Waiting for opponent…" : battle.step === "war" ? "Flip (WAR!)" : "Flip"}
+              {myReady ? "Waiting for opponent..." : battle.step === "war" ? "Flip (WAR!)" : "Flip"}
             </button>
-
-            {meHost && totalCards !== 52 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const base = createInitialState(roomId, user.id);
-                  base.players = state.players.slice(0, 2);
-                  update(startGame(base));
-                }}
-                className="w-full rounded-lg border border-rose-800 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-950/40 transition"
-              >
-                Reset deck (cards: {totalCards})
-              </button>
-            ) : null}
           </div>
         ) : null}
 
@@ -421,5 +323,3 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     </div>
   );
 }
-
-
