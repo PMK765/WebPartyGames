@@ -63,6 +63,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const loseAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastRevealNonceRef = useRef<number>(-1);
   const hasInitializedRef = useRef(false);
+  const isCreatorRef = useRef(false);
 
   const loading = authLoading || profileLoading;
 
@@ -72,7 +73,11 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     loseAudioRef.current = new Audio("/sounds/losthand.mp3");
     if (winAudioRef.current) winAudioRef.current.volume = 0.7;
     if (loseAudioRef.current) loseAudioRef.current.volume = 0.7;
-  }, []);
+
+    const creatorFlag = window.localStorage.getItem(`wpg_creator:war:${roomId}`);
+    isCreatorRef.current = creatorFlag === "1";
+    console.log("Is room creator:", isCreatorRef.current);
+  }, [roomId]);
 
   const myName = useMemo(() => {
     if (!user) return null;
@@ -103,14 +108,26 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       
       const current = stateRef.current;
       if (!current) {
-        const initialState = createInitialState(roomId, payload.id);
-        const withPlayer = addOrUpdatePlayer(initialState, payload);
-        handleRef.current.updateState(withPlayer);
+        if (isCreatorRef.current) {
+          console.log("Creator initializing room with host:", payload.id);
+          const initialState = createInitialState(roomId, payload.id);
+          const withPlayer = addOrUpdatePlayer(initialState, payload);
+          handleRef.current.updateState(withPlayer);
+        } else {
+          console.log("Non-creator waiting for room state");
+        }
         return;
       }
 
-      if (current.hostId !== user.id) return;
-      if (!current.players.some((p) => p.id === payload.id) && current.players.length >= 2) return;
+      if (current.hostId !== user.id) {
+        console.log("Not host, ignoring join");
+        return;
+      }
+      if (!current.players.some((p) => p.id === payload.id) && current.players.length >= 2) {
+        console.log("Room full, ignoring join");
+        return;
+      }
+      console.log("Host adding player:", payload.id);
       const next = addOrUpdatePlayer(current, payload);
       handleRef.current.updateState(next);
     });
