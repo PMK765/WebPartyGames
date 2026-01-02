@@ -85,6 +85,8 @@ create or replace function public.resistance_is_member(p_room_id text, p_user_id
 returns boolean
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select exists (
     select 1
@@ -311,6 +313,41 @@ begin
   )
   on conflict (room_id, user_id)
   do update set name = excluded.name, credits = excluded.credits;
+
+  with ordered as (
+    select
+      m.user_id::text as id,
+      m.name,
+      m.credits,
+      m.joined_at,
+      row_number() over (order by m.joined_at asc) as rn
+    from public.resistance_members m
+    where m.room_id = resistance_join_room.p_room_id
+  ),
+  players_json as (
+    select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'id', o.id,
+          'name', o.name,
+          'credits', o.credits,
+          'isSpectator', (o.rn > 10)
+        )
+        order by o.rn
+      ),
+      '[]'::jsonb
+    ) as players
+    from ordered o
+  )
+  update public.resistance_rooms r
+  set public_state = jsonb_set(
+    r.public_state,
+    '{players}',
+    (select players from players_json),
+    true
+  )
+  where r.room_id = resistance_join_room.p_room_id
+  returning * into v_room;
 
   return query
   select v_room.room_id, v_room.host_id, v_room.public_state, v_room.updated_at;

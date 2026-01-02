@@ -116,6 +116,7 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   const { profile, credits, loading: profileLoading } = useProfile();
 
   const [state, setState] = useState<ResistancePublicState | null>(null);
+  const [roomHostId, setRoomHostId] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [role, setRole] = useState<ResistanceSide | null>(null);
   const [otherSpies, setOtherSpies] = useState<SpyRow[]>([]);
@@ -169,6 +170,7 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
         return;
       }
       setState(joined.data.public_state);
+      setRoomHostId(joined.data.host_id);
       onPhaseChange?.(asShellPhase(joined.data.public_state.phase));
 
       const list = await fetchMembers(roomId);
@@ -186,10 +188,11 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
         "postgres_changes",
         { event: "*", schema: "public", table: "resistance_rooms", filter: `room_id=eq.${roomId}` },
         (payload) => {
-          const next = (payload.new as RoomRow | null)?.public_state ?? null;
-          if (!next) return;
-          setState(next);
-          onPhaseChange?.(asShellPhase(next.phase));
+          const row = (payload.new as RoomRow | null) ?? null;
+          if (!row) return;
+          setRoomHostId(row.host_id);
+          setState(row.public_state);
+          onPhaseChange?.(asShellPhase(row.public_state.phase));
         }
       )
       .on(
@@ -215,38 +218,8 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
   }, [credits, nickname, nicknameConfirmed, onPhaseChange, roomId, user]);
 
   useEffect(() => {
-    if (!user) return;
-    if (!state) return;
-    if (state.hostId !== user.id) return;
-
-    const sorted = [...members].sort((a, b) => a.joined_at.localeCompare(b.joined_at));
-    const players: ResistancePublicState["players"] = [];
-    const spectators: ResistancePublicState["players"] = [];
-
-    for (const m of sorted) {
-      const entry = { id: m.user_id, name: m.name, credits: m.credits, isSpectator: false };
-      if (players.length < 10) players.push(entry);
-      else spectators.push({ ...entry, isSpectator: true });
-    }
-
-    const nextPlayers = [...players, ...spectators];
-    const nextLeaderId = state.leaderId ?? (players[0]?.id ?? null);
-    const nextHostId = players.some((p) => p.id === state.hostId) ? state.hostId : (players[0]?.id ?? state.hostId);
-
-    const shouldUpdate =
-      JSON.stringify(nextPlayers) !== JSON.stringify(state.players) ||
-      nextLeaderId !== state.leaderId ||
-      nextHostId !== state.hostId;
-
-    if (!shouldUpdate) return;
-
-    void supabase
-      .from("resistance_rooms")
-      .update({
-        public_state: { ...state, hostId: nextHostId, leaderId: nextLeaderId, players: nextPlayers }
-      })
-      .eq("room_id", roomId);
-  }, [members, roomId, state, user]);
+    return;
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -294,7 +267,7 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
     if (!user) return;
     if (!state) return;
     const canWrite =
-      state.hostId === user.id ||
+      roomHostId === user.id ||
       (state.phase === "proposing" && state.leaderId === user.id);
     if (!canWrite) return;
     void supabase
@@ -377,7 +350,7 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
 
   const activePlayers = state.players.filter((p) => !p.isSpectator);
   const spectators = state.players.filter((p) => p.isSpectator);
-  const isHost = state.hostId === user.id;
+  const isHost = roomHostId === user.id;
   const leaderId = state.leaderId;
   const isLeader = leaderId === user.id;
   const myIsSpectator = state.players.find((p) => p.id === user.id)?.isSpectator ?? true;
