@@ -279,6 +279,20 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     };
   }, [state]);
 
+  useEffect(() => {
+    if (!user) return;
+    if (!state) return;
+    if (state.phase !== "playing") return;
+    if (state.revealNonce === lastOutcomeNonceRef.current) return;
+    if (!state.battle.winnerId) return;
+    lastOutcomeNonceRef.current = state.revealNonce;
+    const isWin = state.battle.winnerId === user.id;
+    const a = isWin ? winAudioRef.current : loseAudioRef.current;
+    if (!a) return;
+    a.currentTime = 0;
+    void a.play();
+  }, [state, user]);
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 text-sm text-slate-300">
@@ -316,20 +330,6 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const otherId = players.find((p) => p.id !== user.id)?.id ?? null;
   const otherReady = otherId ? state.ready[otherId] === true : false;
   const bothReady = myReady && otherReady;
-
-  useEffect(() => {
-    if (!user) return;
-    if (!state) return;
-    if (state.phase !== "playing") return;
-    if (state.revealNonce === lastOutcomeNonceRef.current) return;
-    if (!state.battle.winnerId) return;
-    lastOutcomeNonceRef.current = state.revealNonce;
-    const isWin = state.battle.winnerId === user.id;
-    const a = isWin ? winAudioRef.current : loseAudioRef.current;
-    if (!a) return;
-    a.currentTime = 0;
-    void a.play();
-  }, [state?.battle.winnerId, state?.phase, state?.revealNonce, user]);
 
   return (
     <div className="space-y-6">
