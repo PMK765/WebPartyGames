@@ -22,6 +22,26 @@ const ALL_GAMES: readonly GameDefinition[] = [
     ]
   },
   {
+    slug: "war",
+    name: "War",
+    shortDescription: "Flip cards, win the battle, and take the pot.",
+    description:
+      "A fast 2-player card game with a full 52-card deck. Flip at the same time; highest rank wins. Ties trigger War.",
+    minPlayers: 2,
+    maxPlayers: 2,
+    categories: ["party", "real-time"],
+    modes: ["online-ready"],
+    estimatedMinutes: 7,
+    iconName: "cards",
+    tags: ["Party", "2 players", "Online-ready", "Cards"],
+    rules: [
+      "Two players join the room.",
+      "Host flips cards from a shuffled 52-card deck.",
+      "Higher rank wins the pot.",
+      "On a tie, War: burn three and flip again."
+    ]
+  },
+  {
     slug: "mini-billiards",
     name: "Mini Billiards",
     shortDescription: "Turn-based pool-lite with simple aiming and quick shots.",
@@ -44,7 +64,7 @@ const ALL_GAMES: readonly GameDefinition[] = [
 ] as const;
 
 export function getAllGames() {
-  return ALL_GAMES.filter((g) => g.slug === "resistance");
+  return ALL_GAMES.filter((g) => g.slug === "resistance" || g.slug === "war");
 }
 
 export function getGameBySlug(slug: GameSlug) {

@@ -2,7 +2,7 @@ export type GameCategory = "party" | "real-time" | "turn-based" | "sports";
 
 export type GameMode = "same-device" | "online-ready";
 
-export const GAME_SLUGS = ["mini-billiards", "resistance"] as const;
+export const GAME_SLUGS = ["mini-billiards", "resistance", "war"] as const;
 
 export type GameSlug = (typeof GAME_SLUGS)[number];
 
