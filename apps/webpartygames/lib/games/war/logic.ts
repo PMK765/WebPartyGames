@@ -142,7 +142,7 @@ export function handleFlip(state: WarState, playerId: string): WarState {
     }
 
     const newPiles = { ...state.piles, [playerId]: rest };
-    const isStartingNewRound = step === "resolved";
+    const isStartingNewRound = step === "resolved" || step === "idle";
     const newPot = isStartingNewRound ? [card] : [...state.battle.pot, card];
     const newFaceUp = isStartingNewRound ? { [playerId]: card } : { ...state.battle.faceUp, [playerId]: card };
     const newReady = { ...state.ready, [playerId]: true };

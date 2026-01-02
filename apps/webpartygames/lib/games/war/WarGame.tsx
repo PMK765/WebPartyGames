@@ -62,7 +62,6 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const [state, setState] = useState<WarState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [commandReady, setCommandReady] = useState(false);
-  const [showCards, setShowCards] = useState(true);
   const [winMessage, setWinMessage] = useState<string | null>(null);
 
   const handleRef = useRef<RealtimeRoomHandle<WarState> | null>(null);
@@ -74,6 +73,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const lastRevealNonceRef = useRef<number>(-1);
   const hasInitializedRef = useRef(false);
   const isCreatorRef = useRef(false);
+  const clearCardsTimeoutRef = useRef<number | null>(null);
 
   const loading = authLoading || profileLoading;
 
@@ -200,6 +200,11 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     if (state.revealNonce === lastRevealNonceRef.current) return;
     lastRevealNonceRef.current = state.revealNonce;
 
+    if (clearCardsTimeoutRef.current) {
+      window.clearTimeout(clearCardsTimeoutRef.current);
+      clearCardsTimeoutRef.current = null;
+    }
+
     if (state.battle.step === "resolved" && state.battle.winnerId) {
       const isWin = state.battle.winnerId === user.id;
       const winnerCard = state.battle.faceUp[state.battle.winnerId];
@@ -225,12 +230,34 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
         void flipAudio.play();
       }
 
-      setShowCards(true);
-      setTimeout(() => {
-        setShowCards(false);
+      clearCardsTimeoutRef.current = window.setTimeout(() => {
+        if (!handleRef.current || !stateRef.current) return;
+        const current = stateRef.current;
+        if (current.phase !== "playing" || current.battle.step !== "resolved") return;
+        if (current.hostId !== user.id) return;
+
+        const [a, b] = current.players;
+        if (!a || !b) return;
+
+        handleRef.current.updateState({
+          ...current,
+          battle: {
+            ...current.battle,
+            faceUp: {},
+            step: "idle"
+          }
+        });
       }, 2000);
     }
   }, [state, user]);
+
+  useEffect(() => {
+    return () => {
+      if (clearCardsTimeoutRef.current) {
+        window.clearTimeout(clearCardsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const update = (next: WarState) => {
     handleRef.current?.updateState(next);
@@ -259,8 +286,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const myPile = state.piles[user.id] ?? [];
   const otherPlayer = players.find((p) => p.id !== user.id);
   const otherPile = otherPlayer ? state.piles[otherPlayer.id] ?? [] : [];
-  const myCard = (battle.faceUp[user.id] && showCards) ? battle.faceUp[user.id] : null;
-  const otherCard = (otherPlayer && battle.faceUp[otherPlayer.id] && showCards) ? battle.faceUp[otherPlayer.id] : null;
+  const myCard = battle.faceUp[user.id] ?? null;
+  const otherCard = otherPlayer ? battle.faceUp[otherPlayer.id] ?? null : null;
   const myReady = state.ready[user.id] === true;
   const totalCards = Object.values(state.piles).reduce((sum, pile) => sum + pile.length, 0);
 
