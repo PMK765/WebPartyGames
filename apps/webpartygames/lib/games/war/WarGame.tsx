@@ -61,7 +61,7 @@ function cardFile(card: Card) {
 function CardBack() {
   return (
     <img
-      src="/cards/card_back.svg"
+      src="/cards/red_joker.svg"
       alt="Card back"
       className="block h-full w-full rounded-2xl object-contain shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
       draggable={false}
@@ -79,29 +79,30 @@ function FlipCard({
   flipped: boolean;
   highlight: boolean;
 }) {
+  const frontSrc = card ? `/cards/${cardFile(card)}` : "/cards/red_joker.svg";
   return (
-    <div className={["wpg-card3d h-40 w-28 shrink-0", flipped ? "wpg-card3d-flipped" : "", highlight ? "wpg-winner-pop" : ""].join(" ")}>
-      <div className="wpg-card3d-inner">
-        <div className="wpg-card3d-face wpg-card3d-front">
-          <CardBack />
-        </div>
-        <div className="wpg-card3d-face wpg-card3d-back">
-          {card ? (
-            <img
-              src={`/cards/${cardFile(card)}`}
-              alt={`${rankLabel(card.rank)} of ${card.suit}`}
-              className="block h-full w-full rounded-2xl object-contain shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
-              draggable={false}
-              loading="eager"
-              onError={(e) => {
-                e.currentTarget.src = "/cards/card_back.svg";
-              }}
-            />
-          ) : (
-            <CardBack />
-          )}
-        </div>
+    <div
+      className={[
+        "relative h-40 w-28 shrink-0",
+        highlight ? "wpg-winner-pop" : ""
+      ].join(" ")}
+    >
+      <div className="absolute inset-0">
+        <CardBack />
       </div>
+      <img
+        src={frontSrc}
+        alt={card ? `${rankLabel(card.rank)} of ${card.suit}` : "Card"}
+        className={[
+          "absolute inset-0 block h-full w-full rounded-2xl object-contain shadow-[0_18px_40px_rgba(0,0,0,0.35)] transition-opacity duration-300",
+          flipped ? "opacity-100" : "opacity-0"
+        ].join(" ")}
+        draggable={false}
+        loading="eager"
+        onError={(e) => {
+          e.currentTarget.src = "/cards/red_joker.svg";
+        }}
+      />
     </div>
   );
 }
@@ -285,6 +286,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const winnerName = battle.winnerId ? state.players.find((p) => p.id === battle.winnerId)?.name ?? null : null;
   const pileCounts = Object.fromEntries(players.map((p) => [p.id, state.piles[p.id]?.length ?? 0]));
   const potCount = battle.pot.length;
+  const totalCards = Object.values(state.piles).reduce((sum, pile) => sum + (pile?.length ?? 0), 0);
   const myReady = user ? state.ready[user.id] === true : false;
   const otherId = players.find((p) => p.id !== user.id)?.id ?? null;
   const otherReady = otherId ? state.ready[otherId] === true : false;
@@ -335,6 +337,24 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
               <div className="text-xs text-slate-500">
                 {battle.step === "war" ? `War ×${battle.warDepth}` : "Battle"}
               </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
+              <div>
+                Total in piles: <span className="font-semibold text-slate-200 tabular-nums">{totalCards}</span>
+              </div>
+              {meHost ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const reset = startGame({ ...state, phase: "lobby", piles: {}, round: 0, battle: state.battle, ready: state.ready });
+                    update(reset);
+                  }}
+                  className="rounded-lg border border-slate-800 bg-slate-950/20 px-3 py-1 font-semibold text-slate-200 hover:border-slate-700 transition"
+                >
+                  Reset deck
+                </button>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-950/20 px-4 py-3">
