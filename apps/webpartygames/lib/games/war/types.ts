@@ -46,6 +46,8 @@ export type WarState = {
   piles: Record<string, Card[]>;
   round: number;
   ready: Record<string, boolean>;
+  revealNonce: number;
+  revealAt: number | null;
   battle: WarBattleState;
 };
 

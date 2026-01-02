@@ -50,6 +50,8 @@ export function createInitialState(roomId: string, hostId: string): WarState {
     piles: {},
     round: 0,
     ready: {},
+    revealNonce: 0,
+    revealAt: null,
     battle: { step: "idle", faceUp: {}, warDepth: 0, pot: [], winnerId: null, message: null }
   };
 }
@@ -106,6 +108,8 @@ export function startGame(state: WarState): WarState {
     round: 0,
     piles,
     ready: Object.fromEntries(state.players.map((p) => [p.id, false])),
+    revealNonce: 0,
+    revealAt: null,
     players: state.players.map((p) => ({ ...p, wonCards: 0 })),
     battle: emptyBattle()
   };
@@ -265,6 +269,10 @@ export function markReady(state: WarState, playerId: string): WarState {
 export function clearReady(state: WarState): WarState {
   const next = Object.fromEntries(state.players.map((p) => [p.id, false]));
   return { ...state, ready: next };
+}
+
+export function setReveal(state: WarState, at: number): WarState {
+  return { ...state, revealNonce: state.revealNonce + 1, revealAt: at };
 }
 
 

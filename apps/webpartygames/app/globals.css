@@ -19,7 +19,7 @@ body {
   transition: transform 650ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.wpg-card3d-flipped .wpg-card3d-inner {
+.wpg-card3d.wpg-card3d-flipped .wpg-card3d-inner {
   transform: rotateY(180deg);
 }
 

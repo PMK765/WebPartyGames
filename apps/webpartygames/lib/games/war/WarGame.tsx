@@ -17,6 +17,7 @@ import {
   createInitialState,
   markReady,
   restart,
+  setReveal,
   startGame
 } from "./logic";
 
@@ -84,7 +85,7 @@ function CardFront({ card }: { card: Card }) {
   const color = cardColor(card.suit);
   const pips = cardPips(card.rank);
   return (
-    <div className="relative h-40 w-28 rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.22)]">
+    <div className="relative h-40 w-28 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 shadow-[0_12px_30px_rgba(0,0,0,0.35)] ring-1 ring-black/5">
       <div className={["absolute left-2 top-2 flex flex-col items-start leading-none", color].join(" ")}>
         <div className="text-sm font-black tracking-tight">{label}</div>
         <div className="text-sm">{symbol}</div>
@@ -119,9 +120,9 @@ function CardFront({ card }: { card: Card }) {
 
 function CardBack() {
   return (
-    <div className="relative h-40 w-28 rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.22)]">
+    <div className="relative h-40 w-28 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 shadow-[0_12px_30px_rgba(0,0,0,0.35)] ring-1 ring-black/5">
       <div className="absolute inset-2 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500" />
-      <div className="absolute inset-2 rounded-xl opacity-20 bg-[radial-gradient(circle_at_20%_20%,white,transparent_45%),radial-gradient(circle_at_80%_30%,white,transparent_40%),radial-gradient(circle_at_40%_80%,white,transparent_35%)]" />
+      <div className="absolute inset-2 rounded-xl opacity-25 bg-[radial-gradient(circle_at_20%_20%,white,transparent_45%),radial-gradient(circle_at_80%_30%,white,transparent_40%),radial-gradient(circle_at_40%_80%,white,transparent_35%)]" />
       <div className="absolute inset-4 rounded-lg border border-white/60" />
     </div>
   );
@@ -137,8 +138,8 @@ function FlipCard({
   highlight: boolean;
 }) {
   return (
-    <div className={["wpg-card3d h-40 w-28", highlight ? "wpg-winner-pop" : ""].join(" ")}>
-      <div className={["wpg-card3d-inner", flipped ? "wpg-card3d-flipped" : ""].join(" ")}>
+    <div className={["wpg-card3d h-40 w-28", flipped ? "wpg-card3d-flipped" : "", highlight ? "wpg-winner-pop" : ""].join(" ")}>
+      <div className="wpg-card3d-inner">
         <div className="wpg-card3d-face wpg-card3d-front">
           <CardBack />
         </div>
@@ -159,6 +160,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const [commandReady, setCommandReady] = useState(false);
   const [animTick, setAnimTick] = useState(0);
   const [animating, setAnimating] = useState(false);
+  const [flipStage, setFlipStage] = useState<"back" | "front">("back");
+  const [revealLock, setRevealLock] = useState(false);
 
   const handleRef = useRef<RealtimeRoomHandle<WarState> | null>(null);
   const commandChannelRef = useRef<RealtimeChannel | null>(null);
@@ -218,7 +221,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
       const stepped = advance(marked, user.id);
       const cleared = clearReady(stepped);
-      handleRef.current.updateState(cleared);
+      const revealed = setReveal(cleared, Date.now());
+      handleRef.current.updateState(revealed);
     });
 
     void commandChannel.subscribe((status) => {
@@ -278,21 +282,19 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   useEffect(() => {
     if (!state) return;
     if (state.phase !== "playing") return;
-    const ids = state.players.slice(0, 2).map((p) => p.id);
-    if (ids.length !== 2) return;
-    const a = state.battle.faceUp[ids[0]] ?? null;
-    const b = state.battle.faceUp[ids[1]] ?? null;
-    const pa = prevFaceUpRef.current[ids[0]] ?? null;
-    const pb = prevFaceUpRef.current[ids[1]] ?? null;
-    prevFaceUpRef.current = { [ids[0]]: a, [ids[1]]: b };
-
-    const changed = (a && (!pa || pa.rank !== a.rank || pa.suit !== a.suit)) || (b && (!pb || pb.rank !== b.rank || pb.suit !== b.suit));
-    if (!changed) return;
-
+    if (!state.revealAt) return;
     setAnimTick((t) => t + 1);
     setAnimating(true);
-    const id = window.setTimeout(() => setAnimating(false), 900);
-    return () => window.clearTimeout(id);
+    setRevealLock(true);
+    setFlipStage("back");
+    const t1 = window.setTimeout(() => setFlipStage("front"), 80);
+    const t2 = window.setTimeout(() => setAnimating(false), 900);
+    const t3 = window.setTimeout(() => setRevealLock(false), 900);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
   }, [state]);
 
   if (loading) {
@@ -399,7 +401,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
             <button
               type="button"
-              disabled={state.players.length !== 2 || myReady}
+              disabled={state.players.length !== 2 || myReady || revealLock}
               onClick={() => {
                 const chan = commandChannelRef.current;
                 if (!chan) return;
@@ -411,7 +413,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
             </button>
 
             <div className="text-xs text-slate-500">
-              {bothReady ? "Revealing…" : myReady ? "Waiting for the other player…" : "Tap once per flip."}
+              {revealLock ? "Revealing…" : myReady ? "Waiting for the other player…" : "Tap once per flip."}
             </div>
           </div>
         ) : null}
@@ -473,7 +475,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
             {players.map((p) => {
               const top = battle.faceUp[p.id] ?? null;
               const highlight = battle.winnerId === p.id;
-              const flipped = animating || (!!top && battle.step !== "idle");
+              const flipped = revealLock ? flipStage === "front" : !!top;
               return (
                 <div key={p.id} className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
