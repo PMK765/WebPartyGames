@@ -117,15 +117,27 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
     commandChannel.on("broadcast", { event: "flip" }, (message) => {
       const payload = (message as unknown as { payload?: { id: string } }).payload;
-      if (!payload) return;
+      if (!payload) {
+        console.error("Flip event: no payload");
+        return;
+      }
+      console.log("Received flip event for:", payload.id, "I am host:", user.id === stateRef.current?.hostId);
+      
       if (!handleRef.current) return;
       const current = stateRef.current;
       if (!current) return;
       if (current.phase !== "playing") return;
-      if (current.hostId !== user.id) return;
-
-      const next = handleFlip(current, payload.id);
-      handleRef.current.updateState(next);
+      
+      if (current.hostId === user.id) {
+        console.log("Host processing flip for:", payload.id);
+        const next = handleFlip(current, payload.id);
+        if (next !== current) {
+          console.log("State changed, updating");
+          handleRef.current.updateState(next);
+        } else {
+          console.log("State unchanged");
+        }
+      }
     });
 
     void commandChannel.subscribe((status) => {
@@ -300,10 +312,14 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
             <button
               type="button"
-              disabled={myReady}
+              disabled={myReady || !commandReady}
               onClick={() => {
                 const chan = commandChannelRef.current;
-                if (!chan) return;
+                if (!chan) {
+                  console.error("No command channel");
+                  return;
+                }
+                console.log("Sending flip event for:", user.id);
                 void chan.send({ type: "broadcast", event: "flip", payload: { id: user.id } });
               }}
               className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
