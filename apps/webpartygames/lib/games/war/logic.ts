@@ -134,7 +134,7 @@ export function handleFlip(state: WarState, playerId: string): WarState {
   const myPile = state.piles[playerId] ?? [];
   const step = state.battle.step;
 
-  if (step === "idle" || step === "resolved") {
+  if (step === "idle" || step === "resolved" || step === "battle") {
     const { card, rest } = shiftOne(myPile);
     if (!card) {
       const winnerId = playerId === a.id ? b.id : a.id;
@@ -146,8 +146,9 @@ export function handleFlip(state: WarState, playerId: string): WarState {
     }
 
     const newPiles = { ...state.piles, [playerId]: rest };
-    const newPot = step === "resolved" ? [card] : [...state.battle.pot, card];
-    const newFaceUp = step === "resolved" ? { [playerId]: card } : { ...state.battle.faceUp, [playerId]: card };
+    const isStartingNewRound = step === "resolved";
+    const newPot = isStartingNewRound ? [card] : [...state.battle.pot, card];
+    const newFaceUp = isStartingNewRound ? { [playerId]: card } : { ...state.battle.faceUp, [playerId]: card };
     const newReady = { ...state.ready, [playerId]: true };
 
     const nextState = {
