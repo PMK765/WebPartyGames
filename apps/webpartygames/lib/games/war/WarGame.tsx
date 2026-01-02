@@ -91,6 +91,9 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     });
     handleRef.current = handle;
 
+    const initialState = createInitialState(roomId, user.id);
+    handle.updateState(initialState);
+
     const commandChannel = supabase.channel(`war-cmd:${roomId}`, {
       config: { broadcast: { self: true } }
     });
@@ -130,7 +133,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       handle.leave();
       void commandChannel.unsubscribe();
     };
-  }, [credits, myName, onPhaseChange, roomId, user]);
+  }, [onPhaseChange, roomId, user]);
 
   useEffect(() => {
     if (!user || !myName || !commandReady) return;
