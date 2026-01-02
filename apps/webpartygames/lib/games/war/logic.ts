@@ -146,8 +146,8 @@ export function handleFlip(state: WarState, playerId: string): WarState {
     }
 
     const newPiles = { ...state.piles, [playerId]: rest };
-    const newPot = [...state.battle.pot, card];
-    const newFaceUp = { ...state.battle.faceUp, [playerId]: card };
+    const newPot = step === "resolved" ? [card] : [...state.battle.pot, card];
+    const newFaceUp = step === "resolved" ? { [playerId]: card } : { ...state.battle.faceUp, [playerId]: card };
     const newReady = { ...state.ready, [playerId]: true };
 
     const nextState = {
@@ -158,7 +158,9 @@ export function handleFlip(state: WarState, playerId: string): WarState {
         ...state.battle,
         step: "battle" as const,
         faceUp: newFaceUp,
-        pot: newPot
+        pot: newPot,
+        winnerId: null,
+        message: null
       }
     };
 
