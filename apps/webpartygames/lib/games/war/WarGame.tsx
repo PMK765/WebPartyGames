@@ -150,21 +150,26 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
         console.error("Flip event: no payload");
         return;
       }
-      console.log("Received flip event for:", payload.id, "I am host:", user.id === stateRef.current?.hostId);
       
       if (!handleRef.current) return;
       const current = stateRef.current;
-      if (!current) return;
-      if (current.phase !== "playing") return;
+      if (!current) {
+        console.error("Flip event: no current state");
+        return;
+      }
+      if (current.phase !== "playing") {
+        console.warn("Flip event: phase is", current.phase);
+        return;
+      }
       
       if (current.hostId === user.id) {
-        console.log("Host processing flip for:", payload.id);
+        console.log("Host processing flip for:", payload.id, "step:", current.battle.step, "ready:", current.ready[payload.id]);
         const next = handleFlip(current, payload.id);
         if (next !== current) {
-          console.log("State changed, updating");
+          console.log("State changed, ready flags:", next.ready, "step:", next.battle.step);
           handleRef.current.updateState(next);
         } else {
-          console.log("State unchanged");
+          console.log("State unchanged - ready:", current.ready[payload.id], "step:", current.battle.step);
         }
       }
     });
@@ -404,7 +409,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
                   console.error("No command channel");
                   return;
                 }
-                console.log("Sending flip event for:", user.id);
+                console.log("Flip clicked - myReady:", myReady, "commandReady:", commandReady, "step:", battle.step);
                 void chan.send({ type: "broadcast", event: "flip", payload: { id: user.id } });
               }}
               className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
