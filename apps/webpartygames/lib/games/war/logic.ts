@@ -49,6 +49,7 @@ export function createInitialState(roomId: string, hostId: string): WarState {
     players: [],
     piles: {},
     round: 0,
+    ready: {},
     battle: { step: "idle", faceUp: {}, warDepth: 0, pot: [], winnerId: null, message: null }
   };
 }
@@ -64,7 +65,8 @@ export function addOrUpdatePlayer(
       )
     : [...state.players, { ...player, wonCards: 0 }];
 
-  return { ...state, players: nextPlayers };
+  const ready = state.ready[player.id] ? state.ready : { ...state.ready, [player.id]: false };
+  return { ...state, players: nextPlayers, ready };
 }
 
 export function removePlayer(state: WarState, playerId: string): WarState {
@@ -103,6 +105,7 @@ export function startGame(state: WarState): WarState {
     phase: "playing",
     round: 0,
     piles,
+    ready: Object.fromEntries(state.players.map((p) => [p.id, false])),
     players: state.players.map((p) => ({ ...p, wonCards: 0 })),
     battle: emptyBattle()
   };
@@ -225,8 +228,7 @@ export function advance(state: WarState, actorId: string): WarState {
         p.id === cmp.winnerId ? { ...p, wonCards: p.wonCards + pot.length } : p
       );
       return {
-        ...state,
-        round: state.round,
+        ...base,
         players,
         piles: nextPiles,
         battle: { step: "resolved", faceUp, warDepth: 0, pot: [], winnerId: cmp.winnerId, message: "War resolved." }
@@ -234,8 +236,7 @@ export function advance(state: WarState, actorId: string): WarState {
     }
 
     return {
-      ...state,
-      round: state.round,
+      ...base,
       piles: nextPiles,
       battle: {
         step: "war",
@@ -254,6 +255,16 @@ export function advance(state: WarState, actorId: string): WarState {
 export function restart(state: WarState, actorId: string): WarState {
   if (state.hostId !== actorId) return state;
   return { ...createInitialState(state.roomId, state.hostId), players: state.players };
+}
+
+export function markReady(state: WarState, playerId: string): WarState {
+  if (!state.players.some((p) => p.id === playerId)) return state;
+  return { ...state, ready: { ...state.ready, [playerId]: true } };
+}
+
+export function clearReady(state: WarState): WarState {
+  const next = Object.fromEntries(state.players.map((p) => [p.id, false]));
+  return { ...state, ready: next };
 }
 
 

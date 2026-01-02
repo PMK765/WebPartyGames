@@ -45,6 +45,7 @@ export type WarState = {
   players: WarPlayer[];
   piles: Record<string, Card[]>;
   round: number;
+  ready: Record<string, boolean>;
   battle: WarBattleState;
 };
 
