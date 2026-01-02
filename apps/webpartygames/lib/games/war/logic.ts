@@ -137,12 +137,8 @@ export function handleFlip(state: WarState, playerId: string): WarState {
   if (step === "idle" || step === "resolved" || step === "battle") {
     const { card, rest } = shiftOne(myPile);
     if (!card) {
-      const winnerId = playerId === a.id ? b.id : a.id;
-      return {
-        ...state,
-        phase: "finished",
-        battle: { ...state.battle, winnerId, message: `${state.players.find(p => p.id === winnerId)?.name} wins!` }
-      };
+      console.warn("Player has no cards to flip:", playerId);
+      return state;
     }
 
     const newPiles = { ...state.piles, [playerId]: rest };
@@ -176,12 +172,8 @@ export function handleFlip(state: WarState, playerId: string): WarState {
     const { card, rest } = shiftOne(burn.rest);
     
     if (!card) {
-      const winnerId = playerId === a.id ? b.id : a.id;
-      return {
-        ...state,
-        phase: "finished",
-        battle: { ...state.battle, winnerId, message: `${state.players.find(p => p.id === winnerId)?.name} wins!` }
-      };
+      console.warn("Player ran out during war:", playerId);
+      return state;
     }
 
     const newPiles = { ...state.piles, [playerId]: rest };

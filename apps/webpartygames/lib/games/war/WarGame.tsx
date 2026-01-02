@@ -35,6 +35,13 @@ function asShellPhase(phase: WarState["phase"]) {
   return "playing";
 }
 
+function suitSymbol(suit: Card["suit"]) {
+  if (suit === "spades") return "♠";
+  if (suit === "hearts") return "♥";
+  if (suit === "diamonds") return "♦";
+  return "♣";
+}
+
 function rankLabel(rank: Card["rank"]) {
   if (rank === 11) return "J";
   if (rank === 12) return "Q";
@@ -55,12 +62,15 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const [state, setState] = useState<WarState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [commandReady, setCommandReady] = useState(false);
+  const [showCards, setShowCards] = useState(true);
+  const [winMessage, setWinMessage] = useState<string | null>(null);
 
   const handleRef = useRef<RealtimeRoomHandle<WarState> | null>(null);
   const commandChannelRef = useRef<RealtimeChannel | null>(null);
   const stateRef = useRef<WarState | null>(null);
   const winAudioRef = useRef<HTMLAudioElement | null>(null);
   const loseAudioRef = useRef<HTMLAudioElement | null>(null);
+  const flipAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastRevealNonceRef = useRef<number>(-1);
   const hasInitializedRef = useRef(false);
   const isCreatorRef = useRef(false);
@@ -71,8 +81,10 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     if (typeof window === "undefined") return;
     winAudioRef.current = new Audio("/sounds/wonhand.mp3");
     loseAudioRef.current = new Audio("/sounds/losthand.mp3");
+    flipAudioRef.current = new Audio("/sounds/flipcard.mp3");
     if (winAudioRef.current) winAudioRef.current.volume = 0.7;
     if (loseAudioRef.current) loseAudioRef.current.volume = 0.7;
+    if (flipAudioRef.current) flipAudioRef.current.volume = 0.5;
 
     const creatorFlag = window.localStorage.getItem(`wpg_creator:war:${roomId}`);
     isCreatorRef.current = creatorFlag === "1";
@@ -188,13 +200,35 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     if (state.revealNonce === lastRevealNonceRef.current) return;
     lastRevealNonceRef.current = state.revealNonce;
 
-    if (state.battle.winnerId) {
+    if (state.battle.step === "resolved" && state.battle.winnerId) {
       const isWin = state.battle.winnerId === user.id;
+      const winnerCard = state.battle.faceUp[state.battle.winnerId];
+      const loserCard = state.battle.faceUp[isWin ? (players.find(p => p.id !== user.id)?.id ?? "") : user.id];
+      
+      if (winnerCard && loserCard) {
+        const msg = isWin 
+          ? `Won ${rankLabel(loserCard.rank)}${suitSymbol(loserCard.suit)} with ${rankLabel(winnerCard.rank)}${suitSymbol(winnerCard.suit)}`
+          : `Lost ${rankLabel(winnerCard.rank)}${suitSymbol(winnerCard.suit)} to ${rankLabel(loserCard.rank)}${suitSymbol(loserCard.suit)}`;
+        setWinMessage(msg);
+        setTimeout(() => setWinMessage(null), 2000);
+      }
+
       const audio = isWin ? winAudioRef.current : loseAudioRef.current;
       if (audio) {
         audio.currentTime = 0;
         void audio.play();
       }
+
+      const flipAudio = flipAudioRef.current;
+      if (flipAudio) {
+        flipAudio.currentTime = 0;
+        void flipAudio.play();
+      }
+
+      setShowCards(true);
+      setTimeout(() => {
+        setShowCards(false);
+      }, 2000);
     }
   }, [state, user]);
 
@@ -225,8 +259,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const myPile = state.piles[user.id] ?? [];
   const otherPlayer = players.find((p) => p.id !== user.id);
   const otherPile = otherPlayer ? state.piles[otherPlayer.id] ?? [] : [];
-  const myCard = battle.faceUp[user.id] ?? null;
-  const otherCard = otherPlayer ? battle.faceUp[otherPlayer.id] ?? null : null;
+  const myCard = (battle.faceUp[user.id] && showCards) ? battle.faceUp[user.id] : null;
+  const otherCard = (otherPlayer && battle.faceUp[otherPlayer.id] && showCards) ? battle.faceUp[otherPlayer.id] : null;
   const myReady = state.ready[user.id] === true;
   const totalCards = Object.values(state.piles).reduce((sum, pile) => sum + pile.length, 0);
 
@@ -274,6 +308,12 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
             <div className="text-xs text-slate-400 text-center">
               Round {state.round} · You: {myPile.length} · Opponent: {otherPile.length} · Pot: {battle.pot.length}
             </div>
+
+            {winMessage ? (
+              <div className="rounded-xl border border-emerald-400 bg-emerald-500/20 px-4 py-3 text-center animate-pulse">
+                <div className="text-sm font-semibold text-emerald-200">{winMessage}</div>
+              </div>
+            ) : null}
 
             <div className="flex items-center justify-center gap-4">
               <div className="flex flex-col items-center gap-2">
