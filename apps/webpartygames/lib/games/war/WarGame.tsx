@@ -11,11 +11,12 @@ import { supabase } from "@/lib/supabaseClient";
 import type { Card, WarState } from "./types";
 import {
   addOrUpdatePlayer,
-  advance,
   canStart,
   clearReady,
   createInitialState,
   markReady,
+  revealForPlayer,
+  resolveIfBothReady,
   restart,
   setReveal,
   startGame
@@ -83,7 +84,7 @@ function FlipCard({
   return (
     <div
       className={[
-        "relative h-36 w-[6.25rem] shrink-0 md:h-40 md:w-28",
+        "relative h-32 w-24 shrink-0 md:h-40 md:w-28",
         highlight ? "wpg-winner-pop" : ""
       ].join(" ")}
     >
@@ -123,7 +124,6 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const commandChannelRef = useRef<RealtimeChannel | null>(null);
   const stateRef = useRef<WarState | null>(null);
   const prevFaceUpRef = useRef<Record<string, Card | null>>({});
-  const flipAudioRef = useRef<HTMLAudioElement | null>(null);
   const winAudioRef = useRef<HTMLAudioElement | null>(null);
   const loseAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastRevealNonceRef = useRef<number>(-1);
@@ -133,10 +133,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    flipAudioRef.current = new Audio("/sounds/flipcard.mp3");
     winAudioRef.current = new Audio("/sounds/wonhand.mp3");
     loseAudioRef.current = new Audio("/sounds/losthand.mp3");
-    if (flipAudioRef.current) flipAudioRef.current.volume = 0.6;
     if (winAudioRef.current) winAudioRef.current.volume = 0.7;
     if (loseAudioRef.current) loseAudioRef.current.volume = 0.7;
   }, []);
@@ -184,18 +182,12 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       if (current.phase !== "playing") return;
       if (current.hostId !== user.id) return;
 
-      const marked = markReady(current, payload.id);
-      const ids = marked.players.slice(0, 2).map((p) => p.id);
-      const allReady = ids.length === 2 && ids.every((id) => marked.ready[id] === true);
-      if (!allReady) {
-        handleRef.current.updateState(marked);
-        return;
-      }
-
-      const stepped = advance(marked, user.id);
-      const cleared = clearReady(stepped);
-      const revealed = setReveal(cleared, Date.now());
-      handleRef.current.updateState(revealed);
+      const staged = revealForPlayer(current, payload.id);
+      const resolved = resolveIfBothReady(staged);
+      const withReveal = resolved.battle.step !== staged.battle.step || resolved.battle.winnerId !== staged.battle.winnerId
+        ? setReveal(resolved, Date.now())
+        : resolved;
+      handleRef.current.updateState(withReveal);
     });
 
     void commandChannel.subscribe((status) => {
@@ -258,12 +250,6 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     if (!state.revealAt) return;
     if (state.revealNonce === lastRevealNonceRef.current) return;
     lastRevealNonceRef.current = state.revealNonce;
-
-    const flip = flipAudioRef.current;
-    if (flip) {
-      flip.currentTime = 0;
-      void flip.play();
-    }
 
     setAnimTick((t) => t + 1);
     setAnimating(true);
@@ -410,23 +396,23 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
             <div className="rounded-2xl border border-slate-800 bg-slate-950/20 px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-slate-100">
-                  {myReady ? "Locked in" : "Ready to flip"}
+                  {myReady ? "Locked in" : "Tap Flip"}
                 </div>
                 <div className="text-xs text-slate-400">
-                  {otherReady ? "Opponent locked in" : "Waiting on opponent"}
+                  {otherReady ? "Opponent ready" : "Waiting…"}
                 </div>
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                <div className={["rounded-xl border px-3 py-2", myReady ? "border-emerald-400 bg-emerald-500/10 text-emerald-100" : "border-slate-800 bg-slate-950/20 text-slate-300"].join(" ")}>
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <div className={["rounded-full border px-3 py-1", myReady ? "border-emerald-400 bg-emerald-500/10 text-emerald-100" : "border-slate-800 bg-slate-950/20 text-slate-300"].join(" ")}>
                   You
                 </div>
-                <div className={["rounded-xl border px-3 py-2", otherReady ? "border-emerald-400 bg-emerald-500/10 text-emerald-100" : "border-slate-800 bg-slate-950/20 text-slate-300"].join(" ")}>
+                <div className={["rounded-full border px-3 py-1", otherReady ? "border-emerald-400 bg-emerald-500/10 text-emerald-100" : "border-slate-800 bg-slate-950/20 text-slate-300"].join(" ")}>
                   Opponent
                 </div>
               </div>
             </div>
 
-            <div className="md:hidden rounded-2xl border border-slate-800 bg-slate-950/20 p-4">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/20 p-4">
               <div className="grid grid-cols-2 gap-3">
                 {players.map((p) => {
                   const top = battle.faceUp[p.id] ?? null;
@@ -442,25 +428,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
               </div>
             </div>
 
-            <div className="md:hidden sticky bottom-4 z-20">
-              <button
-                type="button"
-                disabled={state.players.length !== 2 || myReady || revealLock}
-                onClick={() => {
-                  const chan = commandChannelRef.current;
-                  if (!chan) return;
-                  void chan.send({ type: "broadcast", event: "flip-ready", payload: { id: user.id } });
-                }}
-                className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
-              >
-                {battle.step === "war" ? "Flip (war)" : "Flip"}
-              </button>
-              <div className="mt-2 text-xs text-slate-500">
-                {revealLock ? "Revealing…" : myReady ? "Waiting for the other player…" : "Tap once per flip."}
-              </div>
-            </div>
-
-            <div className="hidden md:block">
+            <div className="sticky bottom-4 z-20">
               <button
                 type="button"
                 disabled={state.players.length !== 2 || myReady || revealLock}
