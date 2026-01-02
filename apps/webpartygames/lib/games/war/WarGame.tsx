@@ -6,6 +6,8 @@ import { getSupabaseRealtimeProvider } from "@/lib/realtime/supabaseProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import type { RealtimeRoomHandle } from "@/lib/realtime/types";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
 import type { Card, WarState } from "./types";
 import { addOrUpdatePlayer, advance, canStart, createInitialState, restart, startGame } from "./logic";
 
@@ -72,8 +74,11 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
   const [state, setState] = useState<WarState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [commandReady, setCommandReady] = useState(false);
 
   const handleRef = useRef<RealtimeRoomHandle<WarState> | null>(null);
+  const commandChannelRef = useRef<RealtimeChannel | null>(null);
+  const stateRef = useRef<WarState | null>(null);
 
   const loading = authLoading || profileLoading;
 
@@ -88,30 +93,72 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     const provider = getSupabaseRealtimeProvider();
 
     const handle = provider.joinRoom<WarState>(roomId, (next) => {
+      stateRef.current = next;
       setState(next);
       onPhaseChange?.(asShellPhase(next.phase));
     });
     handleRef.current = handle;
 
+    const commandChannel = supabase.channel(`war:${roomId}`, {
+      config: { broadcast: { self: true } }
+    });
+
+    commandChannel.on("broadcast", { event: "join" }, (message) => {
+      const payload = (message as unknown as { payload?: { id: string; name: string; credits: number } }).payload;
+      if (!payload) return;
+      if (!handleRef.current) return;
+      const current = stateRef.current;
+      if (!current) return;
+      if (current.hostId !== user.id) return;
+      const next = addOrUpdatePlayer(current, payload);
+      handleRef.current.updateState(next);
+    });
+
+    void commandChannel.subscribe((status) => {
+      if (status !== "SUBSCRIBED") return;
+      setCommandReady(true);
+    });
+    commandChannelRef.current = commandChannel;
+
     return () => {
       handle.leave();
       handleRef.current = null;
+      if (commandChannelRef.current) {
+        void supabase.removeChannel(commandChannelRef.current);
+        commandChannelRef.current = null;
+      }
+      setCommandReady(false);
     };
   }, [onPhaseChange, roomId, user]);
 
   useEffect(() => {
     if (!user) return;
     if (!myName) return;
+    if (!commandReady) return;
+    const chan = commandChannelRef.current;
+    if (!chan) return;
+    void chan.send({ type: "broadcast", event: "join", payload: { id: user.id, name: myName, credits } });
+  }, [commandReady, credits, myName, user]);
+
+  useEffect(() => {
+    if (!user) return;
     if (!handleRef.current) return;
+    if (state) return;
 
-    const ensure = () => {
-      const current = state ?? createInitialState(roomId, user.id);
-      const merged = addOrUpdatePlayer(current, { id: user.id, name: myName, credits });
-      if (merged.players.length === current.players.length && merged === current) return;
-      handleRef.current?.updateState(merged);
-    };
+    const isCreator =
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(`wpg_creator:war:${roomId}`) === "1";
 
-    ensure();
+    const delay = isCreator ? 50 : (Math.abs(Array.from(`${roomId}:${user.id}`).reduce((a, c) => a + c.charCodeAt(0), 0)) % 500) + 250;
+
+    const id = window.setTimeout(() => {
+      if (stateRef.current) return;
+      const initial = createInitialState(roomId, user.id);
+      const seeded = addOrUpdatePlayer(initial, { id: user.id, name: myName ?? guestLabel(user.id), credits });
+      handleRef.current?.updateState(seeded);
+    }, delay);
+
+    return () => window.clearTimeout(id);
   }, [credits, myName, roomId, state, user]);
 
   const update = (next: WarState) => {

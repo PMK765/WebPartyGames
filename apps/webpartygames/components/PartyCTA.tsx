@@ -51,6 +51,9 @@ export function PartyCTA({ slug }: Props) {
             const nextRoomId = createRoomId();
             setRoomId(nextRoomId);
             setCopied(false);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(`wpg_creator:${slug}:${nextRoomId}`, "1");
+            }
             router.push(`/game/${slug}/play/${nextRoomId}`);
           }}
           className="inline-flex items-center justify-center rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition"
