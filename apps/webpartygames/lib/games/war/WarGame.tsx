@@ -62,6 +62,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const winAudioRef = useRef<HTMLAudioElement | null>(null);
   const loseAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastRevealNonceRef = useRef<number>(-1);
+  const isCreatorRef = useRef(false);
 
   const loading = authLoading || profileLoading;
 
@@ -71,7 +72,10 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     loseAudioRef.current = new Audio("/sounds/losthand.mp3");
     if (winAudioRef.current) winAudioRef.current.volume = 0.7;
     if (loseAudioRef.current) loseAudioRef.current.volume = 0.7;
-  }, []);
+
+    const creatorFlag = window.localStorage.getItem(`wpg_creator:war:${roomId}`);
+    isCreatorRef.current = creatorFlag === "1";
+  }, [roomId]);
 
   const myName = useMemo(() => {
     if (!user) return null;
@@ -91,11 +95,19 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     });
     handleRef.current = handle;
 
-    const initialState = createInitialState(roomId, user.id);
-    handle.updateState(initialState);
-
     const commandChannel = supabase.channel(`war-cmd:${roomId}`, {
       config: { broadcast: { self: true } }
+    });
+
+    commandChannel.on("broadcast", { event: "init" }, (message) => {
+      const payload = (message as unknown as { payload?: { hostId: string } }).payload;
+      if (!payload) return;
+      if (!handleRef.current) return;
+      const current = stateRef.current;
+      if (current) return;
+      
+      const initialState = createInitialState(roomId, payload.hostId);
+      handleRef.current.updateState(initialState);
     });
 
     commandChannel.on("broadcast", { event: "join" }, (message) => {
@@ -139,6 +151,15 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     if (!user || !myName || !commandReady) return;
     const chan = commandChannelRef.current;
     if (!chan) return;
+
+    if (isCreatorRef.current) {
+      void chan.send({
+        type: "broadcast",
+        event: "init",
+        payload: { hostId: user.id }
+      });
+    }
+
     void chan.send({
       type: "broadcast",
       event: "join",
@@ -185,16 +206,12 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const players = state.players.slice(0, 2);
   const ready = canStart(state);
   const battle = state.battle;
-  const [a, b] = players;
-  const aId = a?.id ?? "";
-  const bId = b?.id ?? "";
   const myPile = state.piles[user.id] ?? [];
   const otherPlayer = players.find((p) => p.id !== user.id);
   const otherPile = otherPlayer ? state.piles[otherPlayer.id] ?? [] : [];
   const myCard = battle.faceUp[user.id] ?? null;
   const otherCard = otherPlayer ? battle.faceUp[otherPlayer.id] ?? null : null;
   const myReady = state.ready[user.id] === true;
-  const otherReady = otherPlayer ? state.ready[otherPlayer.id] === true : false;
   const totalCards = Object.values(state.piles).reduce((sum, pile) => sum + pile.length, 0);
 
   return (
