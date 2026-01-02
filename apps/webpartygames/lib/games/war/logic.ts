@@ -1,4 +1,4 @@
-import type { Card, Rank, Suit, WarBattleState, WarPlayer, WarState } from "./types";
+import type { Card, Rank, Suit, WarBattleState, WarState } from "./types";
 
 const SUITS: readonly Suit[] = ["spades", "hearts", "diamonds", "clubs"];
 const RANKS: readonly Rank[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
@@ -47,11 +47,9 @@ export function createInitialState(roomId: string, hostId: string): WarState {
     hostId,
     phase: "lobby",
     players: [],
-    deck: [],
-    deckIndex: 0,
+    piles: {},
     round: 0,
-    battle: { step: "idle", drawn: {}, pot: 0, winnerId: null, message: null },
-    maxRounds: 26
+    battle: { step: "idle", faceUp: {}, warDepth: 0, pot: [], winnerId: null, message: null }
   };
 }
 
@@ -77,7 +75,7 @@ export function removePlayer(state: WarState, playerId: string): WarState {
 }
 
 function emptyBattle(): WarBattleState {
-  return { step: "idle", drawn: {}, pot: 0, winnerId: null, message: null };
+  return { step: "idle", faceUp: {}, warDepth: 0, pot: [], winnerId: null, message: null };
 }
 
 export function canStart(state: WarState) {
@@ -87,146 +85,166 @@ export function canStart(state: WarState) {
 export function startGame(state: WarState): WarState {
   if (state.phase !== "lobby") return state;
   if (!canStart(state)) return state;
+  if (state.players.length !== 2) return state;
 
   const deck = deterministicShuffle(buildDeck(), `${state.roomId}:war`);
+  const [a, b] = state.players;
+  const aId = a?.id ?? "a";
+  const bId = b?.id ?? "b";
+  const piles: Record<string, Card[]> = { [aId]: [], [bId]: [] };
+  for (let i = 0; i < deck.length; i += 1) {
+    const card = deck[i];
+    if (!card) continue;
+    const owner = i % 2 === 0 ? aId : bId;
+    piles[owner] = [...(piles[owner] ?? []), card];
+  }
   return {
     ...state,
     phase: "playing",
-    deck,
-    deckIndex: 0,
     round: 0,
+    piles,
     players: state.players.map((p) => ({ ...p, wonCards: 0 })),
     battle: emptyBattle()
   };
-}
-
-function takeCard(state: WarState): { next: WarState; card: Card | null } {
-  if (state.deckIndex >= state.deck.length) return { next: state, card: null };
-  const card = state.deck[state.deckIndex] ?? null;
-  return { next: { ...state, deckIndex: state.deckIndex + 1 }, card };
 }
 
 function rankValue(card: Card) {
   return card.rank;
 }
 
-function compareTop(drawn: Record<string, Card[]>, playerIds: readonly string[]) {
-  const top: { id: string; value: number }[] = [];
-  for (const id of playerIds) {
-    const pile = drawn[id] ?? [];
-    const last = pile[pile.length - 1];
-    if (!last) return { winnerId: null, tied: true };
-    top.push({ id, value: rankValue(last) });
-  }
-  top.sort((a, b) => b.value - a.value);
-  const best = top[0];
-  const second = top[1];
-  if (!best || !second) return { winnerId: null, tied: true };
-  if (best.value === second.value) return { winnerId: null, tied: true };
-  return { winnerId: best.id, tied: false };
+function compareFaceUp(faceUp: Record<string, Card | null>, aId: string, bId: string) {
+  const a = faceUp[aId];
+  const b = faceUp[bId];
+  if (!a || !b) return { winnerId: null, tied: true };
+  const av = rankValue(a);
+  const bv = rankValue(b);
+  if (av === bv) return { winnerId: null, tied: true };
+  return { winnerId: av > bv ? aId : bId, tied: false };
 }
 
-function totalCardsInDrawn(drawn: Record<string, Card[]>) {
-  let total = 0;
-  for (const piles of Object.values(drawn)) total += piles.length;
-  return total;
+function shiftOne(pile: readonly Card[]) {
+  const card = pile[0] ?? null;
+  const rest = pile.slice(1);
+  return { card, rest };
 }
 
 export function advance(state: WarState, actorId: string): WarState {
   if (state.phase !== "playing") return state;
   if (state.hostId !== actorId) return state;
-  const playerIds = state.players.map((p) => p.id);
-  if (playerIds.length < 2) return state;
+  if (state.players.length !== 2) return state;
+  const aId = state.players[0]?.id ?? null;
+  const bId = state.players[1]?.id ?? null;
+  if (!aId || !bId) return state;
 
-  const remaining = state.deck.length - state.deckIndex;
-  if (remaining <= 0) {
-    const maxWon = Math.max(...state.players.map((p) => p.wonCards));
-    const winners = state.players.filter((p) => p.wonCards === maxWon);
-    const message = winners.length === 1 ? `${winners[0]?.name ?? "Winner"} wins.` : "Tie game.";
-    return { ...state, phase: "finished", battle: { ...state.battle, message } };
+  const aPile = state.piles[aId] ?? [];
+  const bPile = state.piles[bId] ?? [];
+
+  if (aPile.length === 0 || bPile.length === 0) {
+    const winnerId = aPile.length > bPile.length ? aId : bId;
+    const winnerName = state.players.find((p) => p.id === winnerId)?.name ?? "Winner";
+    return { ...state, phase: "finished", battle: { ...state.battle, winnerId, message: `${winnerName} wins.` } };
   }
 
   const round = state.round + 1;
-  const maxRounds = state.maxRounds;
-  if (round > maxRounds) {
-    const maxWon = Math.max(...state.players.map((p) => p.wonCards));
-    const winners = state.players.filter((p) => p.wonCards === maxWon);
-    const message = winners.length === 1 ? `${winners[0]?.name ?? "Winner"} wins.` : "Tie game.";
-    return { ...state, phase: "finished", battle: { ...state.battle, message } };
-  }
+  const base: WarState = {
+    ...state,
+    round,
+    battle: {
+      ...state.battle,
+      winnerId: null,
+      message: null
+    }
+  };
 
   const step = state.battle.step;
 
   if (step === "idle" || step === "resolved") {
-    let next = { ...state, round, battle: emptyBattle() };
-    const drawn: Record<string, Card[]> = {};
-    for (const id of playerIds) {
-      const take = takeCard(next);
-      next = take.next;
-      if (!take.card) return { ...next, phase: "finished", battle: { ...next.battle, message: "Deck ended." } };
-      drawn[id] = [take.card];
-    }
-    const cmp = compareTop(drawn, playerIds);
-    const pot = totalCardsInDrawn(drawn);
+    const aDraw = shiftOne(aPile);
+    const bDraw = shiftOne(bPile);
+    if (!aDraw.card || !bDraw.card) return { ...base, phase: "finished", battle: { ...base.battle, message: "Game over." } };
+
+    const pot = [aDraw.card, bDraw.card];
+    const faceUp = { [aId]: aDraw.card, [bId]: bDraw.card };
+    const cmp = compareFaceUp(faceUp, aId, bId);
+    const piles = { ...base.piles, [aId]: aDraw.rest, [bId]: bDraw.rest };
+
     if (!cmp.tied && cmp.winnerId) {
-      const players = next.players.map((p) =>
-        p.id === cmp.winnerId ? { ...p, wonCards: p.wonCards + pot } : p
+      const winnerPile = [...(piles[cmp.winnerId] ?? []), ...pot];
+      piles[cmp.winnerId] = winnerPile;
+      const players = base.players.map((p) =>
+        p.id === cmp.winnerId ? { ...p, wonCards: p.wonCards + pot.length } : p
       );
       return {
-        ...next,
+        ...base,
         players,
-        battle: { step: "resolved", drawn, pot, winnerId: cmp.winnerId, message: "Battle resolved." }
+        piles,
+        battle: { step: "resolved", faceUp, warDepth: 0, pot: [], winnerId: cmp.winnerId, message: "Battle resolved." }
       };
     }
+
     return {
-      ...next,
-      battle: { step: "warBurn", drawn, pot, winnerId: null, message: "War! Burning 3 cards…" }
+      ...base,
+      piles,
+      battle: { step: "war", faceUp, warDepth: 1, pot, winnerId: null, message: "War!" }
     };
   }
 
-  if (step === "warBurn") {
-    let next = state;
-    const drawn = { ...state.battle.drawn };
+  if (step === "war") {
+    const pot = [...state.battle.pot];
+    let nextPiles = { ...state.piles };
+
     for (let burn = 0; burn < 3; burn += 1) {
-      for (const id of playerIds) {
-        const take = takeCard(next);
-        next = take.next;
-        if (!take.card) return { ...next, phase: "finished", battle: { ...next.battle, message: "Deck ended." } };
-        drawn[id] = [...(drawn[id] ?? []), take.card];
+      const aBurn = shiftOne(nextPiles[aId] ?? []);
+      const bBurn = shiftOne(nextPiles[bId] ?? []);
+      if (!aBurn.card || !bBurn.card) {
+        const winnerId = aBurn.card ? aId : bBurn.card ? bId : (nextPiles[aId]?.length ?? 0) > (nextPiles[bId]?.length ?? 0) ? aId : bId;
+        const winnerName = state.players.find((p) => p.id === winnerId)?.name ?? "Winner";
+        return { ...state, phase: "finished", battle: { ...state.battle, winnerId, message: `${winnerName} wins (opponent ran out).` } };
       }
+      pot.push(aBurn.card, bBurn.card);
+      nextPiles = { ...nextPiles, [aId]: aBurn.rest, [bId]: bBurn.rest };
     }
-    const pot = totalCardsInDrawn(drawn);
-    return {
-      ...next,
-      round: state.round,
-      battle: { step: "warBattle", drawn, pot, winnerId: null, message: "War battle…" }
-    };
-  }
 
-  if (step === "warBattle") {
-    let next = state;
-    const drawn = { ...state.battle.drawn };
-    for (const id of playerIds) {
-      const take = takeCard(next);
-      next = take.next;
-      if (!take.card) return { ...next, phase: "finished", battle: { ...next.battle, message: "Deck ended." } };
-      drawn[id] = [...(drawn[id] ?? []), take.card];
+    const aFlip = shiftOne(nextPiles[aId] ?? []);
+    const bFlip = shiftOne(nextPiles[bId] ?? []);
+    if (!aFlip.card || !bFlip.card) {
+      const winnerId = aFlip.card ? aId : bFlip.card ? bId : (nextPiles[aId]?.length ?? 0) > (nextPiles[bId]?.length ?? 0) ? aId : bId;
+      const winnerName = state.players.find((p) => p.id === winnerId)?.name ?? "Winner";
+      return { ...state, phase: "finished", battle: { ...state.battle, winnerId, message: `${winnerName} wins (opponent ran out).` } };
     }
-    const cmp = compareTop(drawn, playerIds);
-    const pot = totalCardsInDrawn(drawn);
+
+    pot.push(aFlip.card, bFlip.card);
+    nextPiles = { ...nextPiles, [aId]: aFlip.rest, [bId]: bFlip.rest };
+    const faceUp = { [aId]: aFlip.card, [bId]: bFlip.card };
+    const cmp = compareFaceUp(faceUp, aId, bId);
+
     if (!cmp.tied && cmp.winnerId) {
-      const players = next.players.map((p) =>
-        p.id === cmp.winnerId ? { ...p, wonCards: p.wonCards + pot } : p
+      const winnerPile = [...(nextPiles[cmp.winnerId] ?? []), ...pot];
+      nextPiles[cmp.winnerId] = winnerPile;
+      const players = state.players.map((p) =>
+        p.id === cmp.winnerId ? { ...p, wonCards: p.wonCards + pot.length } : p
       );
       return {
-        ...next,
+        ...state,
+        round: state.round,
         players,
-        battle: { step: "resolved", drawn, pot, winnerId: cmp.winnerId, message: "War resolved." }
+        piles: nextPiles,
+        battle: { step: "resolved", faceUp, warDepth: 0, pot: [], winnerId: cmp.winnerId, message: "War resolved." }
       };
     }
+
     return {
-      ...next,
-      battle: { step: "warBurn", drawn, pot, winnerId: null, message: "War again! Burning 3 cards…" }
+      ...state,
+      round: state.round,
+      piles: nextPiles,
+      battle: {
+        step: "war",
+        faceUp,
+        warDepth: (state.battle.warDepth ?? 1) + 1,
+        pot,
+        winnerId: null,
+        message: "War again!"
+      }
     };
   }
 

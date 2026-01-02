@@ -30,9 +30,10 @@ export type WarPlayer = {
 export type WarPhase = "lobby" | "playing" | "finished";
 
 export type WarBattleState = {
-  step: "idle" | "battle" | "warBurn" | "warBattle" | "resolved";
-  drawn: Record<string, Card[]>;
-  pot: number;
+  step: "idle" | "battle" | "war" | "resolved";
+  faceUp: Record<string, Card | null>;
+  warDepth: number;
+  pot: Card[];
   winnerId: string | null;
   message: string | null;
 };
@@ -42,11 +43,9 @@ export type WarState = {
   hostId: string;
   phase: WarPhase;
   players: WarPlayer[];
-  deck: Card[];
-  deckIndex: number;
+  piles: Record<string, Card[]>;
   round: number;
   battle: WarBattleState;
-  maxRounds: number;
 };
 
 

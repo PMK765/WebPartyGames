@@ -9,16 +9,16 @@ type Props = {
 };
 
 function createRoomId() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const digits = "0123456789";
   const bytes =
     typeof window !== "undefined" && typeof window.crypto !== "undefined"
-      ? window.crypto.getRandomValues(new Uint8Array(8))
+      ? window.crypto.getRandomValues(new Uint8Array(4))
       : undefined;
 
   let out = "";
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < 4; i += 1) {
     const n = bytes ? bytes[i] : Math.floor(Math.random() * 256);
-    out += alphabet[n % alphabet.length];
+    out += digits[n % digits.length];
   }
   return out;
 }
@@ -88,8 +88,7 @@ export function PartyCTA({ slug }: Props) {
       </div>
 
       <div className="text-xs text-slate-400">
-        Share the link later when online multiplayer lands. For now, the party runs
-        on this device only.
+        Room codes are short for quick testing. Collisions are possible; regenerate if needed.
       </div>
 
       <div className="h-px bg-slate-800/80" />
@@ -99,7 +98,7 @@ export function PartyCTA({ slug }: Props) {
           Join an existing party
         </div>
         <div className="text-xs text-slate-400">
-          Enter a room code like <span className="font-mono">CZ3T56D7</span>.
+          Enter a room code like <span className="font-mono">4821</span>.
         </div>
       </div>
 
@@ -118,7 +117,6 @@ export function PartyCTA({ slug }: Props) {
           type="button"
           onClick={() => {
             const normalized = joinCode
-              .toUpperCase()
               .replaceAll(" ", "")
               .replaceAll("-", "")
               .trim();

@@ -44,7 +44,7 @@ function rankLabel(rank: Card["rank"]) {
 }
 
 function cardColor(suit: Card["suit"]) {
-  return suit === "hearts" || suit === "diamonds" ? "text-rose-500" : "text-slate-200";
+  return suit === "hearts" || suit === "diamonds" ? "text-rose-600" : "text-slate-950";
 }
 
 function CardView({ card }: { card: Card }) {
@@ -52,17 +52,17 @@ function CardView({ card }: { card: Card }) {
   const label = rankLabel(card.rank);
   const color = cardColor(card.suit);
   return (
-    <div className="relative h-32 w-24 rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-950 to-slate-900 shadow-sm">
-      <div className={["absolute left-3 top-3 text-sm font-semibold", color].join(" ")}>
-        {label}
-        <span className="ml-1">{symbol}</span>
+    <div className="relative h-36 w-24 rounded-2xl border border-slate-300 bg-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
+      <div className={["absolute left-2 top-2 flex flex-col items-start leading-none", color].join(" ")}>
+        <div className="text-sm font-extrabold">{label}</div>
+        <div className="text-sm">{symbol}</div>
       </div>
-      <div className={["absolute inset-0 flex items-center justify-center text-4xl", color].join(" ")}>
+      <div className={["absolute inset-0 flex items-center justify-center text-5xl", color].join(" ")}>
         {symbol}
       </div>
-      <div className={["absolute bottom-3 right-3 rotate-180 text-sm font-semibold", color].join(" ")}>
-        {label}
-        <span className="ml-1">{symbol}</span>
+      <div className={["absolute bottom-2 right-2 flex rotate-180 flex-col items-start leading-none", color].join(" ")}>
+        <div className="text-sm font-extrabold">{label}</div>
+        <div className="text-sm">{symbol}</div>
       </div>
     </div>
   );
@@ -197,6 +197,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const ready = canStart(state);
   const battle = state.battle;
   const winnerName = battle.winnerId ? state.players.find((p) => p.id === battle.winnerId)?.name ?? null : null;
+  const pileCounts = Object.fromEntries(players.map((p) => [p.id, state.piles[p.id]?.length ?? 0]));
+  const potCount = battle.pot.length;
 
   return (
     <div className="space-y-6">
@@ -211,7 +213,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
           <div className="space-y-1">
             <div className="text-sm font-semibold text-slate-100">{gameDefinition.name}</div>
             <div className="text-xs text-slate-400">
-              {state.players.length} players · Deck {Math.max(0, state.deck.length - state.deckIndex)}/52
+              {state.players.length} players · Cards {pileCounts[players[0]?.id ?? ""] ?? 0}–{pileCounts[players[1]?.id ?? ""] ?? 0} · Pot {potCount}
             </div>
           </div>
           <div className="text-xs text-slate-500">
@@ -282,8 +284,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-slate-100">{p.name}</div>
                 <div className="text-xs text-slate-300">
-                  <span className="font-semibold text-slate-100 tabular-nums">{p.wonCards}</span>{" "}
-                  won
+                  <span className="font-semibold text-slate-100 tabular-nums">{state.piles[p.id]?.length ?? 0}</span>{" "}
+                  cards
                 </div>
               </div>
             </div>
@@ -299,24 +301,27 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-semibold text-slate-100">Battle</div>
             <div className="text-xs text-slate-500">
-              Pot: <span className="font-semibold text-slate-200 tabular-nums">{battle.pot}</span>
+              Pot: <span className="font-semibold text-slate-200 tabular-nums">{potCount}</span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {players.map((p) => {
-              const pile = battle.drawn[p.id] ?? [];
-              const top = pile[pile.length - 1] ?? null;
+              const top = battle.faceUp[p.id] ?? null;
               return (
                 <div key={p.id} className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-slate-200">{p.name}</div>
                     <div className="text-xs text-slate-500">
-                      Stack: <span className="tabular-nums text-slate-300">{pile.length}</span>
+                      Cards: <span className="tabular-nums text-slate-300">{state.piles[p.id]?.length ?? 0}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {top ? <CardView card={top} /> : <div className="h-32 w-24 rounded-2xl border border-slate-800 bg-slate-950/20" />}
+                    {top ? (
+                      <CardView card={top} />
+                    ) : (
+                      <div className="h-36 w-24 rounded-2xl border border-slate-800 bg-slate-950/20" />
+                    )}
                     <div className="text-xs text-slate-400">
                       {p.id === battle.winnerId ? (
                         <span className="font-semibold text-emerald-300">Winner</span>
