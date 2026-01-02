@@ -94,7 +94,7 @@ function FlipCard({
               draggable={false}
               loading="eager"
               onError={(e) => {
-                e.currentTarget.style.visibility = "hidden";
+                e.currentTarget.src = "/cards/card_back.svg";
               }}
             />
           ) : (
