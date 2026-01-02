@@ -61,7 +61,7 @@ function cardFile(card: Card) {
 function CardBack() {
   return (
     <img
-      src="/cards/red_joker.svg"
+      src="/cards/card_back.svg"
       alt="Card back"
       className="block h-full w-full rounded-2xl object-contain shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
       draggable={false}
@@ -79,11 +79,11 @@ function FlipCard({
   flipped: boolean;
   highlight: boolean;
 }) {
-  const frontSrc = card ? `/cards/${cardFile(card)}` : "/cards/red_joker.svg";
+  const frontSrc = card ? `/cards/${cardFile(card)}` : "/cards/card_back.svg";
   return (
     <div
       className={[
-        "relative h-40 w-28 shrink-0",
+        "relative h-36 w-[6.25rem] shrink-0 md:h-40 md:w-28",
         highlight ? "wpg-winner-pop" : ""
       ].join(" ")}
     >
@@ -100,7 +100,7 @@ function FlipCard({
         draggable={false}
         loading="eager"
         onError={(e) => {
-          e.currentTarget.src = "/cards/red_joker.svg";
+          e.currentTarget.src = "/cards/card_back.svg";
         }}
       />
     </div>
@@ -287,6 +287,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const pileCounts = Object.fromEntries(players.map((p) => [p.id, state.piles[p.id]?.length ?? 0]));
   const potCount = battle.pot.length;
   const totalCards = Object.values(state.piles).reduce((sum, pile) => sum + (pile?.length ?? 0), 0);
+  const displayedTotal = players.reduce((sum, p) => sum + (state.piles[p.id]?.length ?? 0), 0);
   const myReady = user ? state.ready[user.id] === true : false;
   const otherId = players.find((p) => p.id !== user.id)?.id ?? null;
   const otherReady = otherId ? state.ready[otherId] === true : false;
@@ -322,7 +323,11 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
             <button
               type="button"
               disabled={!meHost || !ready || state.players.length !== 2}
-              onClick={() => update(startGame(state))}
+              onClick={() => {
+                const base = createInitialState(roomId, user.id);
+                base.players = state.players.slice(0, 2);
+                update(startGame(base));
+              }}
               className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
             >
               Start game
@@ -341,14 +346,21 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
             <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
               <div>
-                Total in piles: <span className="font-semibold text-slate-200 tabular-nums">{totalCards}</span>
+                Total in piles:{" "}
+                <span className={["font-semibold tabular-nums", totalCards === 52 ? "text-slate-200" : "text-rose-300"].join(" ")}>
+                  {totalCards}
+                </span>
+                {displayedTotal !== totalCards ? (
+                  <span className="ml-2 text-slate-500">(some cards assigned to non-player ids)</span>
+                ) : null}
               </div>
               {meHost ? (
                 <button
                   type="button"
                   onClick={() => {
-                    const reset = startGame({ ...state, phase: "lobby", piles: {}, round: 0, battle: state.battle, ready: state.ready });
-                    update(reset);
+                    const base = createInitialState(roomId, user.id);
+                    base.players = state.players.slice(0, 2);
+                    update(startGame(base));
                   }}
                   className="rounded-lg border border-slate-800 bg-slate-950/20 px-3 py-1 font-semibold text-slate-200 hover:border-slate-700 transition"
                 >
