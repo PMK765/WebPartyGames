@@ -241,6 +241,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
         handleRef.current.updateState({
           ...current,
+          ready: { [a.id]: false, [b.id]: false },
           battle: {
             ...current.battle,
             faceUp: {},
