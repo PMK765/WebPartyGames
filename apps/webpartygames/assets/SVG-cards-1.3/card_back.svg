@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="167.0869141pt" height="242.6669922pt" viewBox="0 0 167.0869141 242.6669922">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#10b981"/>
+      <stop offset="0.55" stop-color="#06b6d4"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <pattern id="p" width="12" height="12" patternUnits="userSpaceOnUse">
+      <circle cx="3" cy="3" r="1.2" fill="rgba(255,255,255,0.35)"/>
+      <circle cx="9" cy="9" r="1.2" fill="rgba(255,255,255,0.35)"/>
+    </pattern>
+  </defs>
+  <rect x="1.5" y="1.5" width="164.0869141" height="239.6669922" rx="10" ry="10" fill="#ffffff" stroke="#111827" stroke-width="3"/>
+  <rect x="10" y="10" width="147.0869141" height="222.6669922" rx="8" ry="8" fill="url(#g)"/>
+  <rect x="10" y="10" width="147.0869141" height="222.6669922" rx="8" ry="8" fill="url(#p)" opacity="0.75"/>
+  <rect x="16" y="16" width="135.0869141" height="210.6669922" rx="7" ry="7" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2"/>
+  <g opacity="0.25" fill="#ffffff">
+    <path d="M83.543457 55c10 0 18 8 18 18s-8 18-18 18-18-8-18-18 8-18 18-18z"/>
+    <path d="M83.543457 117c14 0 25 11 25 25s-11 25-25 25-25-11-25-25 11-25 25-25z"/>
+  </g>
+</svg>
+
+

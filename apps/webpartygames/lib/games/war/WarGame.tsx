@@ -53,78 +53,19 @@ function rankLabel(rank: Card["rank"]) {
   return String(rank);
 }
 
-function cardColor(suit: Card["suit"]) {
-  return suit === "hearts" || suit === "diamonds" ? "text-rose-600" : "text-slate-950";
-}
-
-function cardPips(rank: Card["rank"]) {
-  if (rank >= 11) return 0;
-  if (rank === 14) return 1;
-  return rank;
-}
-
-function pipPositions(pips: number) {
-  const map: Record<number, Array<[number, number]>> = {
-    1: [[50, 50]],
-    2: [[50, 20], [50, 80]],
-    3: [[50, 20], [50, 50], [50, 80]],
-    4: [[28, 22], [72, 22], [28, 78], [72, 78]],
-    5: [[28, 22], [72, 22], [50, 50], [28, 78], [72, 78]],
-    6: [[28, 20], [72, 20], [28, 50], [72, 50], [28, 80], [72, 80]],
-    7: [[28, 18], [72, 18], [28, 44], [72, 44], [50, 50], [28, 82], [72, 82]],
-    8: [[28, 18], [72, 18], [28, 40], [72, 40], [28, 60], [72, 60], [28, 82], [72, 82]],
-    9: [[28, 18], [72, 18], [28, 40], [72, 40], [50, 50], [28, 60], [72, 60], [28, 82], [72, 82]],
-    10: [[28, 16], [72, 16], [28, 32], [72, 32], [28, 50], [72, 50], [28, 68], [72, 68], [28, 84], [72, 84]]
-  };
-  return map[pips] ?? map[1];
-}
-
-function CardFront({ card }: { card: Card }) {
-  const symbol = suitSymbol(card.suit);
-  const label = rankLabel(card.rank);
-  const color = cardColor(card.suit);
-  const pips = cardPips(card.rank);
-  return (
-    <div className="relative h-40 w-28 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 shadow-[0_12px_30px_rgba(0,0,0,0.35)] ring-1 ring-black/5">
-      <div className={["absolute left-2 top-2 flex flex-col items-start leading-none", color].join(" ")}>
-        <div className="text-sm font-black tracking-tight">{label}</div>
-        <div className="text-sm">{symbol}</div>
-      </div>
-
-      {card.rank >= 11 ? (
-        <div className={["absolute inset-0 flex flex-col items-center justify-center gap-1", color].join(" ")}>
-          <div className="text-5xl font-black tracking-tight">{label}</div>
-          <div className="text-4xl">{symbol}</div>
-        </div>
-      ) : (
-        <div className="absolute inset-0">
-          {pipPositions(pips).map(([x, y], idx) => (
-            <div
-              key={idx}
-              className={["absolute text-2xl", color].join(" ")}
-              style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%, -50%)" }}
-            >
-              {symbol}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className={["absolute bottom-2 right-2 flex rotate-180 flex-col items-start leading-none", color].join(" ")}>
-        <div className="text-sm font-black tracking-tight">{label}</div>
-        <div className="text-sm">{symbol}</div>
-      </div>
-    </div>
-  );
+function cardFile(card: Card) {
+  const rank = card.rank === 14 ? "ace" : card.rank === 13 ? "king" : card.rank === 12 ? "queen" : card.rank === 11 ? "jack" : String(card.rank);
+  return `${rank}_of_${card.suit}.svg`;
 }
 
 function CardBack() {
   return (
-    <div className="relative h-40 w-28 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 shadow-[0_12px_30px_rgba(0,0,0,0.35)] ring-1 ring-black/5">
-      <div className="absolute inset-2 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500" />
-      <div className="absolute inset-2 rounded-xl opacity-25 bg-[radial-gradient(circle_at_20%_20%,white,transparent_45%),radial-gradient(circle_at_80%_30%,white,transparent_40%),radial-gradient(circle_at_40%_80%,white,transparent_35%)]" />
-      <div className="absolute inset-4 rounded-lg border border-white/60" />
-    </div>
+    <img
+      src="/cards/card_back.svg"
+      alt="Card back"
+      className="h-40 w-28 rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+      draggable={false}
+    />
   );
 }
 
@@ -144,7 +85,16 @@ function FlipCard({
           <CardBack />
         </div>
         <div className="wpg-card3d-face wpg-card3d-back">
-          {card ? <CardFront card={card} /> : <CardBack />}
+          {card ? (
+            <img
+              src={`/cards/${cardFile(card)}`}
+              alt={`${rankLabel(card.rank)} of ${card.suit}`}
+              className="h-40 w-28 rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+              draggable={false}
+            />
+          ) : (
+            <CardBack />
+          )}
         </div>
       </div>
     </div>
