@@ -123,8 +123,23 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const commandChannelRef = useRef<RealtimeChannel | null>(null);
   const stateRef = useRef<WarState | null>(null);
   const prevFaceUpRef = useRef<Record<string, Card | null>>({});
+  const flipAudioRef = useRef<HTMLAudioElement | null>(null);
+  const winAudioRef = useRef<HTMLAudioElement | null>(null);
+  const loseAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastRevealNonceRef = useRef<number>(-1);
+  const lastOutcomeNonceRef = useRef<number>(-1);
 
   const loading = authLoading || profileLoading;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    flipAudioRef.current = new Audio("/sounds/flipcard.mp3");
+    winAudioRef.current = new Audio("/sounds/wonhand.mp3");
+    loseAudioRef.current = new Audio("/sounds/losthand.mp3");
+    if (flipAudioRef.current) flipAudioRef.current.volume = 0.6;
+    if (winAudioRef.current) winAudioRef.current.volume = 0.7;
+    if (loseAudioRef.current) loseAudioRef.current.volume = 0.7;
+  }, []);
 
   const myName = useMemo(() => {
     if (!user) return null;
@@ -241,6 +256,15 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     if (!state) return;
     if (state.phase !== "playing") return;
     if (!state.revealAt) return;
+    if (state.revealNonce === lastRevealNonceRef.current) return;
+    lastRevealNonceRef.current = state.revealNonce;
+
+    const flip = flipAudioRef.current;
+    if (flip) {
+      flip.currentTime = 0;
+      void flip.play();
+    }
+
     setAnimTick((t) => t + 1);
     setAnimating(true);
     setRevealLock(true);
@@ -292,6 +316,20 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const otherId = players.find((p) => p.id !== user.id)?.id ?? null;
   const otherReady = otherId ? state.ready[otherId] === true : false;
   const bothReady = myReady && otherReady;
+
+  useEffect(() => {
+    if (!user) return;
+    if (!state) return;
+    if (state.phase !== "playing") return;
+    if (state.revealNonce === lastOutcomeNonceRef.current) return;
+    if (!state.battle.winnerId) return;
+    lastOutcomeNonceRef.current = state.revealNonce;
+    const isWin = state.battle.winnerId === user.id;
+    const a = isWin ? winAudioRef.current : loseAudioRef.current;
+    if (!a) return;
+    a.currentTime = 0;
+    void a.play();
+  }, [state?.battle.winnerId, state?.phase, state?.revealNonce, user]);
 
   return (
     <div className="space-y-6">
@@ -388,21 +426,56 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
               </div>
             </div>
 
-            <button
-              type="button"
-              disabled={state.players.length !== 2 || myReady || revealLock}
-              onClick={() => {
-                const chan = commandChannelRef.current;
-                if (!chan) return;
-                void chan.send({ type: "broadcast", event: "flip-ready", payload: { id: user.id } });
-              }}
-              className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
-            >
-              {battle.step === "war" ? "Flip (war)" : "Flip"}
-            </button>
+            <div className="md:hidden rounded-2xl border border-slate-800 bg-slate-950/20 p-4">
+              <div className="grid grid-cols-2 gap-3">
+                {players.map((p) => {
+                  const top = battle.faceUp[p.id] ?? null;
+                  const highlight = battle.winnerId === p.id;
+                  const flipped = revealLock ? flipStage === "front" : !!top;
+                  return (
+                    <div key={p.id} className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-200">{p.id === user.id ? "You" : "Opponent"}</div>
+                      <FlipCard card={top} flipped={flipped} highlight={highlight && !animating} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
-            <div className="text-xs text-slate-500">
-              {revealLock ? "Revealing…" : myReady ? "Waiting for the other player…" : "Tap once per flip."}
+            <div className="md:hidden sticky bottom-4 z-20">
+              <button
+                type="button"
+                disabled={state.players.length !== 2 || myReady || revealLock}
+                onClick={() => {
+                  const chan = commandChannelRef.current;
+                  if (!chan) return;
+                  void chan.send({ type: "broadcast", event: "flip-ready", payload: { id: user.id } });
+                }}
+                className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
+              >
+                {battle.step === "war" ? "Flip (war)" : "Flip"}
+              </button>
+              <div className="mt-2 text-xs text-slate-500">
+                {revealLock ? "Revealing…" : myReady ? "Waiting for the other player…" : "Tap once per flip."}
+              </div>
+            </div>
+
+            <div className="hidden md:block">
+              <button
+                type="button"
+                disabled={state.players.length !== 2 || myReady || revealLock}
+                onClick={() => {
+                  const chan = commandChannelRef.current;
+                  if (!chan) return;
+                  void chan.send({ type: "broadcast", event: "flip-ready", payload: { id: user.id } });
+                }}
+                className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
+              >
+                {battle.step === "war" ? "Flip (war)" : "Flip"}
+              </button>
+              <div className="mt-2 text-xs text-slate-500">
+                {revealLock ? "Revealing…" : myReady ? "Waiting for the other player…" : "Tap once per flip."}
+              </div>
             </div>
           </div>
         ) : null}
@@ -422,7 +495,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+      <section className="hidden md:block rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
         <div className="text-sm font-semibold text-slate-100">Players</div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {players.map((p) => (
@@ -452,7 +525,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       </section>
 
       {state.phase !== "lobby" ? (
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+        <section className="hidden md:block rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-semibold text-slate-100">Battle</div>
             <div className="text-xs text-slate-500">
