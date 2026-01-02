@@ -5,6 +5,7 @@ import type { GameDefinition } from "@/lib/games/types";
 import { getSupabaseRealtimeProvider } from "@/lib/realtime/supabaseProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
+import type { RealtimeRoomHandle } from "@/lib/realtime/types";
 import type { Card, WarState } from "./types";
 import { addOrUpdatePlayer, advance, canStart, createInitialState, restart, startGame } from "./logic";
 
@@ -72,7 +73,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const [state, setState] = useState<WarState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleRef = useRef<ReturnType<ReturnType<typeof getSupabaseRealtimeProvider>["joinRoom"]> | null>(null);
+  const handleRef = useRef<RealtimeRoomHandle<WarState> | null>(null);
 
   const loading = authLoading || profileLoading;
 
