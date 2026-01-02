@@ -65,6 +65,7 @@ function CardBack() {
       alt="Card back"
       className="h-40 w-28 rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
       draggable={false}
+      loading="eager"
     />
   );
 }
@@ -91,6 +92,10 @@ function FlipCard({
               alt={`${rankLabel(card.rank)} of ${card.suit}`}
               className="h-40 w-28 rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
               draggable={false}
+              loading="eager"
+              onError={(e) => {
+                e.currentTarget.style.visibility = "hidden";
+              }}
             />
           ) : (
             <CardBack />
@@ -129,15 +134,16 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   useEffect(() => {
     if (!user) return;
     const provider = getSupabaseRealtimeProvider();
+    const roomKey = `war:${roomId}`;
 
-    const handle = provider.joinRoom<WarState>(roomId, (next) => {
+    const handle = provider.joinRoom<WarState>(roomKey, (next) => {
       stateRef.current = next;
       setState(next);
       onPhaseChange?.(asShellPhase(next.phase));
     });
     handleRef.current = handle;
 
-    const commandChannel = supabase.channel(`war:${roomId}`, {
+    const commandChannel = supabase.channel(`war-cmd:${roomId}`, {
       config: { broadcast: { self: true } }
     });
 

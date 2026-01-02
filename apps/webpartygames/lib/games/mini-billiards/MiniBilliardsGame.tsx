@@ -44,7 +44,7 @@ export function MiniBilliardsGame({ roomId, gameDefinition, onPhaseChange }: Pro
   useEffect(() => {
     if (!user) return;
 
-    const handle = provider.joinRoom<MiniBilliardsState>(roomId, (next) => {
+    const handle = provider.joinRoom<MiniBilliardsState>(`mini-billiards:${roomId}`, (next) => {
       setState(next);
       onPhaseChange?.(asShellPhase(next.phase));
     });
