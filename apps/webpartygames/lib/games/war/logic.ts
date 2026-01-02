@@ -3,10 +3,6 @@ import type { Card, Rank, Suit, WarBattleState, WarState } from "./types";
 const SUITS: readonly Suit[] = ["spades", "hearts", "diamonds", "clubs"];
 const RANKS: readonly Rank[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 
-function clampInt(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, Math.floor(n)));
-}
-
 function hashSeed(seed: string) {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i += 1) {
@@ -108,7 +104,7 @@ export function startGame(state: WarState): WarState {
     phase: "playing",
     round: 0,
     piles,
-    ready: Object.fromEntries(state.players.map((p) => [p.id, false])),
+    ready: { [aId]: false, [bId]: false },
     revealNonce: 0,
     revealAt: null,
     players: state.players.map((p) => ({ ...p, wonCards: 0 })),
@@ -148,132 +144,162 @@ function takeMany(pile: readonly Card[], count: number) {
   return { taken, rest, ok: true };
 }
 
-export function revealForPlayer(state: WarState, playerId: string): WarState {
+export function markPlayerReady(state: WarState, playerId: string): WarState {
   if (state.phase !== "playing") return state;
+  if (!state.players.some((p) => p.id === playerId)) return state;
+  if (state.ready[playerId]) return state;
+  
   const players = state.players.slice(0, 2);
   if (players.length !== 2) return state;
-  if (!players.some((p) => p.id === playerId)) return state;
-  if (state.ready[playerId] === true) return state;
-
-  const aId = players[0]?.id ?? null;
-  const bId = players[1]?.id ?? null;
+  
+  const aId = players[0]?.id ?? "";
+  const bId = players[1]?.id ?? "";
   if (!aId || !bId) return state;
-
-  const step = state.battle.step;
-  const faceUp = { ...state.battle.faceUp };
-  if (faceUp[playerId]) {
-    return markReady(state, playerId);
-  }
 
   const piles = { ...state.piles };
   const pot = [...state.battle.pot];
+  const faceUp = { ...state.battle.faceUp };
+  const step = state.battle.step;
 
   if (step === "idle" || step === "resolved") {
-    const take = shiftOne(piles[playerId] ?? []);
-    if (!take.card) return state;
-    piles[playerId] = take.rest;
-    pot.push(take.card);
-    faceUp[playerId] = take.card;
+    const { card, rest } = shiftOne(piles[playerId] ?? []);
+    if (!card) {
+      return { ...state, phase: "finished", battle: { ...state.battle, winnerId: aId === playerId ? bId : aId, message: `${playerId} out of cards!` } };
+    }
+    piles[playerId] = rest;
+    pot.push(card);
+    faceUp[playerId] = card;
+
+    const nextReady = { ...state.ready, [playerId]: true };
     return {
-      ...markReady(state, playerId),
+      ...state,
       piles,
+      ready: nextReady,
       battle: { ...state.battle, step: "battle", faceUp, pot }
     };
   }
 
   if (step === "war") {
     const burn = takeMany(piles[playerId] ?? [], 3);
-    if (!burn.ok) return state;
+    if (!burn.ok) {
+      return { ...state, phase: "finished", battle: { ...state.battle, winnerId: aId === playerId ? bId : aId, message: `${playerId} out of cards during war!` } };
+    }
     pot.push(...burn.taken);
-    const flip = shiftOne(burn.rest);
-    if (!flip.card) return state;
-    piles[playerId] = flip.rest;
-    pot.push(flip.card);
-    faceUp[playerId] = flip.card;
+    const { card, rest } = shiftOne(burn.rest);
+    if (!card) {
+      return { ...state, phase: "finished", battle: { ...state.battle, winnerId: aId === playerId ? bId : aId, message: `${playerId} out of cards during war!` } };
+    }
+    piles[playerId] = rest;
+    pot.push(card);
+    faceUp[playerId] = card;
+
+    const nextReady = { ...state.ready, [playerId]: true };
     return {
-      ...markReady(state, playerId),
+      ...state,
       piles,
+      ready: nextReady,
       battle: { ...state.battle, faceUp, pot }
     };
   }
 
-  return markReady(state, playerId);
+  return { ...state, ready: { ...state.ready, [playerId]: true } };
 }
 
-export function resolveIfBothReady(state: WarState): WarState {
+export function attemptResolve(state: WarState): WarState {
   if (state.phase !== "playing") return state;
   const players = state.players.slice(0, 2);
   if (players.length !== 2) return state;
-  const aId = players[0]?.id ?? null;
-  const bId = players[1]?.id ?? null;
+  
+  const aId = players[0]?.id ?? "";
+  const bId = players[1]?.id ?? "";
   if (!aId || !bId) return state;
-  if (state.ready[aId] !== true || state.ready[bId] !== true) return state;
 
-  const aCard = state.battle.faceUp[aId] ?? null;
-  const bCard = state.battle.faceUp[bId] ?? null;
+  if (!state.ready[aId] || !state.ready[bId]) return state;
+
+  const aCard = state.battle.faceUp[aId];
+  const bCard = state.battle.faceUp[bId];
   if (!aCard || !bCard) return state;
 
   const cmp = compareFaceUp(state.battle.faceUp, aId, bId);
-  const pot = [...state.battle.pot];
-  const piles = { ...state.piles };
-
-  if (!cmp.tied && cmp.winnerId) {
-    const winnerPile = [...(piles[cmp.winnerId] ?? []), ...pot];
-    piles[cmp.winnerId] = winnerPile;
-    const playersNext = state.players.map((p) =>
-      p.id === cmp.winnerId ? { ...p, wonCards: p.wonCards + pot.length } : p
-    );
+  
+  if (cmp.tied) {
     return {
       ...state,
-      round: state.round + 1,
+      ready: { [aId]: false, [bId]: false },
+      battle: {
+        ...state.battle,
+        step: "war",
+        warDepth: (state.battle.step === "war" ? state.battle.warDepth : 0) + 1,
+        winnerId: null,
+        message: "War!"
+      }
+    };
+  }
+
+  const winnerId = cmp.winnerId!;
+  const pot = [...state.battle.pot];
+  const piles = { ...state.piles };
+  piles[winnerId] = [...(piles[winnerId] ?? []), ...pot];
+
+  const playersNext = state.players.map((p) =>
+    p.id === winnerId ? { ...p, wonCards: p.wonCards + pot.length } : p
+  );
+
+  const aPile = piles[aId] ?? [];
+  const bPile = piles[bId] ?? [];
+  if (aPile.length === 0) {
+    return {
+      ...state,
+      phase: "finished",
       players: playersNext,
       piles,
-      ready: Object.fromEntries(players.map((p) => [p.id, false])),
       battle: {
         step: "resolved",
         faceUp: { [aId]: aCard, [bId]: bCard },
         warDepth: 0,
         pot: [],
-        winnerId: cmp.winnerId,
-        message: "Battle resolved."
+        winnerId: bId,
+        message: `${playersNext.find((p) => p.id === bId)?.name ?? "Winner"} wins!`
+      }
+    };
+  }
+  if (bPile.length === 0) {
+    return {
+      ...state,
+      phase: "finished",
+      players: playersNext,
+      piles,
+      battle: {
+        step: "resolved",
+        faceUp: { [aId]: aCard, [bId]: bCard },
+        warDepth: 0,
+        pot: [],
+        winnerId: aId,
+        message: `${playersNext.find((p) => p.id === aId)?.name ?? "Winner"} wins!`
       }
     };
   }
 
   return {
     ...state,
-    ready: Object.fromEntries(players.map((p) => [p.id, false])),
+    round: state.round + 1,
+    players: playersNext,
+    piles,
+    ready: { [aId]: false, [bId]: false },
     battle: {
-      ...state.battle,
-      step: "war",
-      warDepth: (state.battle.step === "war" ? state.battle.warDepth : 0) + 1,
-      winnerId: null,
-      message: "War!"
-    }
+      step: "resolved",
+      faceUp: { [aId]: aCard, [bId]: bCard },
+      warDepth: 0,
+      pot: [],
+      winnerId,
+      message: "Round complete."
+    },
+    revealAt: Date.now(),
+    revealNonce: state.revealNonce + 1
   };
-}
-
-export function advance(state: WarState, actorId: string): WarState {
-  return state;
 }
 
 export function restart(state: WarState, actorId: string): WarState {
   if (state.hostId !== actorId) return state;
   return { ...createInitialState(state.roomId, state.hostId), players: state.players };
 }
-
-export function markReady(state: WarState, playerId: string): WarState {
-  if (!state.players.some((p) => p.id === playerId)) return state;
-  return { ...state, ready: { ...state.ready, [playerId]: true } };
-}
-
-export function clearReady(state: WarState): WarState {
-  const next = Object.fromEntries(state.players.map((p) => [p.id, false]));
-  return { ...state, ready: next };
-}
-
-export function setReveal(state: WarState, at: number): WarState {
-  return { ...state, revealNonce: state.revealNonce + 1, revealAt: at };
-}
-
-

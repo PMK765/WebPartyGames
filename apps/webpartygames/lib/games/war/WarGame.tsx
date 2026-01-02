@@ -11,14 +11,11 @@ import { supabase } from "@/lib/supabaseClient";
 import type { Card, WarState } from "./types";
 import {
   addOrUpdatePlayer,
+  attemptResolve,
   canStart,
-  clearReady,
   createInitialState,
-  markReady,
-  revealForPlayer,
-  resolveIfBothReady,
+  markPlayerReady,
   restart,
-  setReveal,
   startGame
 } from "./logic";
 
@@ -182,12 +179,9 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       if (current.phase !== "playing") return;
       if (current.hostId !== user.id) return;
 
-      const staged = revealForPlayer(current, payload.id);
-      const resolved = resolveIfBothReady(staged);
-      const withReveal = resolved.battle.step !== staged.battle.step || resolved.battle.winnerId !== staged.battle.winnerId
-        ? setReveal(resolved, Date.now())
-        : resolved;
-      handleRef.current.updateState(withReveal);
+      const staged = markPlayerReady(current, payload.id);
+      const resolved = attemptResolve(staged);
+      handleRef.current.updateState(resolved);
     });
 
     void commandChannel.subscribe((status) => {
@@ -360,91 +354,53 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
         ) : null}
 
         {state.phase === "playing" ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-slate-400">Round {state.round}</div>
-              <div className="text-xs text-slate-500">
-                {battle.step === "war" ? `War ×${battle.warDepth}` : "Battle"}
-              </div>
+          <div className="space-y-4">
+            <div className="text-xs text-slate-400 text-center">
+              Round {state.round} · You: {pileCounts[user.id] ?? 0} cards · Opponent: {pileCounts[otherId ?? ""] ?? 0} cards · Pot: {potCount}
             </div>
 
-            <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
-              <div>
-                Total in piles:{" "}
-                <span className={["font-semibold tabular-nums", totalCards === 52 ? "text-slate-200" : "text-rose-300"].join(" ")}>
-                  {totalCards}
-                </span>
-                {displayedTotal !== totalCards ? (
-                  <span className="ml-2 text-slate-500">(some cards assigned to non-player ids)</span>
-                ) : null}
-              </div>
-              {meHost ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const base = createInitialState(roomId, user.id);
-                    base.players = state.players.slice(0, 2);
-                    update(startGame(base));
-                  }}
-                  className="rounded-lg border border-slate-800 bg-slate-950/20 px-3 py-1 font-semibold text-slate-200 hover:border-slate-700 transition"
-                >
-                  Reset deck
-                </button>
-              ) : null}
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/20 px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-slate-100">
-                  {myReady ? "Locked in" : "Tap Flip"}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {otherReady ? "Opponent ready" : "Waiting…"}
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-xs">
-                <div className={["rounded-full border px-3 py-1", myReady ? "border-emerald-400 bg-emerald-500/10 text-emerald-100" : "border-slate-800 bg-slate-950/20 text-slate-300"].join(" ")}>
-                  You
-                </div>
-                <div className={["rounded-full border px-3 py-1", otherReady ? "border-emerald-400 bg-emerald-500/10 text-emerald-100" : "border-slate-800 bg-slate-950/20 text-slate-300"].join(" ")}>
-                  Opponent
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/20 p-4">
-              <div className="grid grid-cols-2 gap-3">
-                {players.map((p) => {
-                  const top = battle.faceUp[p.id] ?? null;
-                  const highlight = battle.winnerId === p.id;
-                  const flipped = revealLock ? flipStage === "front" : !!top;
-                  return (
-                    <div key={p.id} className="space-y-2">
-                      <div className="text-xs font-semibold text-slate-200">{p.id === user.id ? "You" : "Opponent"}</div>
-                      <FlipCard card={top} flipped={flipped} highlight={highlight && !animating} />
+            <div className="grid grid-cols-2 gap-4">
+              {players.map((p) => {
+                const card = battle.faceUp[p.id] ?? null;
+                const isMe = p.id === user.id;
+                const highlight = battle.winnerId === p.id && battle.step === "resolved";
+                return (
+                  <div key={p.id} className="space-y-2">
+                    <div className="text-xs font-semibold text-slate-300 text-center">
+                      {isMe ? "You" : "Opponent"}
                     </div>
-                  );
-                })}
-              </div>
+                    <FlipCard card={card} flipped={!!card} highlight={highlight} />
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="sticky bottom-4 z-20">
+            <button
+              type="button"
+              disabled={state.players.length !== 2 || myReady}
+              onClick={() => {
+                const chan = commandChannelRef.current;
+                if (!chan) return;
+                void chan.send({ type: "broadcast", event: "flip-ready", payload: { id: user.id } });
+              }}
+              className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
+            >
+              {myReady ? "Waiting for opponent…" : battle.step === "war" ? "Flip (WAR!)" : "Flip"}
+            </button>
+
+            {meHost && totalCards !== 52 ? (
               <button
                 type="button"
-                disabled={state.players.length !== 2 || myReady || revealLock}
                 onClick={() => {
-                  const chan = commandChannelRef.current;
-                  if (!chan) return;
-                  void chan.send({ type: "broadcast", event: "flip-ready", payload: { id: user.id } });
+                  const base = createInitialState(roomId, user.id);
+                  base.players = state.players.slice(0, 2);
+                  update(startGame(base));
                 }}
-                className="w-full rounded-2xl bg-emerald-500 px-4 py-4 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
+                className="w-full rounded-lg border border-rose-800 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-950/40 transition"
               >
-                {battle.step === "war" ? "Flip (war)" : "Flip"}
+                Reset deck (cards: {totalCards})
               </button>
-              <div className="mt-2 text-xs text-slate-500">
-                {revealLock ? "Revealing…" : myReady ? "Waiting for the other player…" : "Tap once per flip."}
-              </div>
-            </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -462,81 +418,6 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
           </div>
         ) : null}
       </section>
-
-      <section className="hidden md:block rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
-        <div className="text-sm font-semibold text-slate-100">Players</div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {players.map((p) => (
-            <div
-              key={p.id}
-              className={[
-                "rounded-2xl border px-4 py-3",
-                p.id === state.hostId ? "border-emerald-400 bg-emerald-500/10" : "border-slate-800 bg-slate-950/20"
-              ].join(" ")}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-slate-100">{p.name}</div>
-                <div className="text-xs text-slate-300">
-                  <span className="font-semibold text-slate-100 tabular-nums">{state.piles[p.id]?.length ?? 0}</span>{" "}
-                  cards
-                </div>
-              </div>
-              <div className="mt-2 text-xs text-slate-400">
-                {state.ready[p.id] ? "Ready" : "Not ready"}
-              </div>
-            </div>
-          ))}
-        </div>
-        {state.players.length !== 2 ? (
-          <div className="text-xs text-slate-500">This game is tuned for 2 players.</div>
-        ) : null}
-      </section>
-
-      {state.phase !== "lobby" ? (
-        <section className="hidden md:block rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-slate-100">Battle</div>
-            <div className="text-xs text-slate-500">
-              Pot: <span className="font-semibold text-slate-200 tabular-nums">{potCount}</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {players.map((p) => {
-              const top = battle.faceUp[p.id] ?? null;
-              const highlight = battle.winnerId === p.id;
-              const flipped = revealLock ? flipStage === "front" : !!top;
-              return (
-                <div key={p.id} className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-200">{p.name}</div>
-                    <div className="text-xs text-slate-500">
-                      Cards: <span className="tabular-nums text-slate-300">{state.piles[p.id]?.length ?? 0}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div key={`${animTick}:${p.id}`} className={highlight ? "rounded-3xl ring-2 ring-emerald-400/60 ring-offset-0" : ""}>
-                      <FlipCard card={top} flipped={flipped} highlight={highlight && !animating} />
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {p.id === battle.winnerId ? (
-                        <span className="font-semibold text-emerald-300">Winner</span>
-                      ) : null}
-                      {battle.winnerId && p.id !== battle.winnerId ? (
-                        <span className="font-semibold text-slate-400">—</span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="text-xs text-slate-400">
-            {battle.message ?? (winnerName ? `${winnerName} wins the pot.` : "Flip cards to play.")}
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }
