@@ -61,6 +61,7 @@ export function addOrUpdatePlayer(
   player: { id: string; name: string; credits: number }
 ): WarState {
   const existing = state.players.find((p) => p.id === player.id);
+  if (!existing && state.players.length >= 2) return state;
   const nextPlayers = existing
     ? state.players.map((p) =>
         p.id === player.id ? { ...p, name: player.name, credits: player.credits } : p

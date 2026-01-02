@@ -63,7 +63,7 @@ function CardBack() {
     <img
       src="/cards/card_back.svg"
       alt="Card back"
-      className="h-40 w-28 rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+      className="block h-full w-full rounded-2xl object-contain shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
       draggable={false}
       loading="eager"
     />
@@ -80,7 +80,7 @@ function FlipCard({
   highlight: boolean;
 }) {
   return (
-    <div className={["wpg-card3d h-40 w-28", flipped ? "wpg-card3d-flipped" : "", highlight ? "wpg-winner-pop" : ""].join(" ")}>
+    <div className={["wpg-card3d h-40 w-28 shrink-0", flipped ? "wpg-card3d-flipped" : "", highlight ? "wpg-winner-pop" : ""].join(" ")}>
       <div className="wpg-card3d-inner">
         <div className="wpg-card3d-face wpg-card3d-front">
           <CardBack />
@@ -90,7 +90,7 @@ function FlipCard({
             <img
               src={`/cards/${cardFile(card)}`}
               alt={`${rankLabel(card.rank)} of ${card.suit}`}
-              className="h-40 w-28 rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+              className="block h-full w-full rounded-2xl object-contain shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
               draggable={false}
               loading="eager"
               onError={(e) => {
@@ -154,6 +154,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       const current = stateRef.current;
       if (!current) return;
       if (current.hostId !== user.id) return;
+      if (!current.players.some((p) => p.id === payload.id) && current.players.length >= 2) return;
       const next = addOrUpdatePlayer(current, payload);
       handleRef.current.updateState(next);
     });
