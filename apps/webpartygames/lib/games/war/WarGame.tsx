@@ -247,7 +247,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
               onClick={() => update(advance(state, user.id))}
               className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
             >
-              {battle.step === "warBurn" ? "Burn 3 (war)" : battle.step === "warBattle" ? "Flip (war)" : "Flip cards"}
+              {battle.step === "war" ? "Resolve war" : "Flip cards"}
             </button>
             <div className="text-xs text-slate-500">
               {meHost ? "You control the deck to avoid conflicts." : "Waiting for host…"}
