@@ -247,16 +247,18 @@ begin
 end;
 $$;
 
+drop function if exists public.resistance_join_room(text, text, integer);
+
 create or replace function public.resistance_join_room(
   p_room_id text,
   p_name text,
   p_credits integer
 )
 returns table (
-  room_id text,
-  host_id uuid,
-  public_state jsonb,
-  updated_at timestamptz
+  out_room_id text,
+  out_host_id uuid,
+  out_public_state jsonb,
+  out_updated_at timestamptz
 )
 language plpgsql
 security definer

@@ -52,18 +52,27 @@ type MemberRow = {
 };
 
 async function joinRoom(roomId: string, name: string, credits: number) {
-  return supabase
+  const res = await supabase
     .rpc("resistance_join_room", { p_room_id: roomId, p_name: name, p_credits: credits })
-    .maybeSingle<RoomRow>();
-}
+    .maybeSingle<{
+      out_room_id: string;
+      out_host_id: string;
+      out_public_state: ResistancePublicState;
+      out_updated_at: string;
+    }>();
 
-async function upsertMember(roomId: string, userId: string, name: string, credits: number) {
-  return supabase
-    .from("resistance_members")
-    .upsert(
-      { room_id: roomId, user_id: userId, name, credits },
-      { onConflict: "room_id,user_id" }
-    );
+  if (res.error) return { data: null, error: res.error };
+  if (!res.data) return { data: null, error: null };
+
+  return {
+    data: {
+      room_id: res.data.out_room_id,
+      host_id: res.data.out_host_id,
+      public_state: res.data.out_public_state,
+      updated_at: res.data.out_updated_at
+    },
+    error: null
+  } as const;
 }
 
 async function fetchMembers(roomId: string) {
@@ -204,14 +213,6 @@ export function ResistanceGame({ roomId, gameDefinition, onPhaseChange }: Props)
       }
     };
   }, [credits, nickname, nicknameConfirmed, onPhaseChange, roomId, user]);
-
-  useEffect(() => {
-    if (!user) return;
-    if (!nicknameConfirmed) return;
-    const name = nickname.trim();
-    if (!name) return;
-    void upsertMember(roomId, user.id, name, credits);
-  }, [credits, nickname, nicknameConfirmed, roomId, user]);
 
   useEffect(() => {
     if (!user) return;
