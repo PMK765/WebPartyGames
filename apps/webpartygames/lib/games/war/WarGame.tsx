@@ -62,7 +62,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const winAudioRef = useRef<HTMLAudioElement | null>(null);
   const loseAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastRevealNonceRef = useRef<number>(-1);
-  const isCreatorRef = useRef(false);
+  const hasInitializedRef = useRef(false);
 
   const loading = authLoading || profileLoading;
 
@@ -72,10 +72,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     loseAudioRef.current = new Audio("/sounds/losthand.mp3");
     if (winAudioRef.current) winAudioRef.current.volume = 0.7;
     if (loseAudioRef.current) loseAudioRef.current.volume = 0.7;
-
-    const creatorFlag = window.localStorage.getItem(`wpg_creator:war:${roomId}`);
-    isCreatorRef.current = creatorFlag === "1";
-  }, [roomId]);
+  }, []);
 
   const myName = useMemo(() => {
     if (!user) return null;
@@ -99,23 +96,19 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
       config: { broadcast: { self: true } }
     });
 
-    commandChannel.on("broadcast", { event: "init" }, (message) => {
-      const payload = (message as unknown as { payload?: { hostId: string } }).payload;
-      if (!payload) return;
-      if (!handleRef.current) return;
-      const current = stateRef.current;
-      if (current) return;
-      
-      const initialState = createInitialState(roomId, payload.hostId);
-      handleRef.current.updateState(initialState);
-    });
-
     commandChannel.on("broadcast", { event: "join" }, (message) => {
       const payload = (message as unknown as { payload?: { id: string; name: string; credits: number } }).payload;
       if (!payload) return;
       if (!handleRef.current) return;
+      
       const current = stateRef.current;
-      if (!current) return;
+      if (!current) {
+        const initialState = createInitialState(roomId, payload.id);
+        const withPlayer = addOrUpdatePlayer(initialState, payload);
+        handleRef.current.updateState(withPlayer);
+        return;
+      }
+
       if (current.hostId !== user.id) return;
       if (!current.players.some((p) => p.id === payload.id) && current.players.length >= 2) return;
       const next = addOrUpdatePlayer(current, payload);
@@ -148,17 +141,11 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   }, [onPhaseChange, roomId, user]);
 
   useEffect(() => {
-    if (!user || !myName || !commandReady) return;
+    if (!user || !myName || !commandReady || hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+    
     const chan = commandChannelRef.current;
     if (!chan) return;
-
-    if (isCreatorRef.current) {
-      void chan.send({
-        type: "broadcast",
-        event: "init",
-        payload: { hostId: user.id }
-      });
-    }
 
     void chan.send({
       type: "broadcast",
