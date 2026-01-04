@@ -63,6 +63,8 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [commandReady, setCommandReady] = useState(false);
   const [winMessage, setWinMessage] = useState<string | null>(null);
+  const [nickname, setNickname] = useState("");
+  const [nicknameConfirmed, setNicknameConfirmed] = useState(false);
 
   const handleRef = useRef<RealtimeRoomHandle<WarState> | null>(null);
   const commandChannelRef = useRef<RealtimeChannel | null>(null);
@@ -89,6 +91,12 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     const creatorFlag = window.localStorage.getItem(`wpg_creator:war:${roomId}`);
     isCreatorRef.current = creatorFlag === "1";
     console.log("Is room creator:", isCreatorRef.current);
+
+    const savedNickname = window.localStorage.getItem(`wpg_nickname:war`);
+    if (savedNickname) {
+      setNickname(savedNickname);
+      setNicknameConfirmed(true);
+    }
   }, [roomId]);
 
   const myName = useMemo(() => {
@@ -187,7 +195,7 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
   }, [onPhaseChange, roomId, user]);
 
   useEffect(() => {
-    if (!user || !myName || !commandReady || hasInitializedRef.current) return;
+    if (!user || !myName || !commandReady || hasInitializedRef.current || !nicknameConfirmed) return;
     hasInitializedRef.current = true;
     
     const chan = commandChannelRef.current;
@@ -196,9 +204,9 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
     void chan.send({
       type: "broadcast",
       event: "join",
-      payload: { id: user.id, name: myName, credits }
+      payload: { id: user.id, name: nickname, credits }
     });
-  }, [commandReady, credits, myName, user]);
+  }, [commandReady, credits, myName, nickname, nicknameConfirmed, user]);
 
   useEffect(() => {
     if (!user || !state || state.phase !== "playing") return;
@@ -283,6 +291,47 @@ export function WarGame({ roomId, gameDefinition, onPhaseChange }: Props) {
 
   if (!state) {
     return <div className="text-sm text-slate-400">Connecting...</div>;
+  }
+
+  if (!nicknameConfirmed) {
+    return (
+      <div className="space-y-6">
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/30 p-5 space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-semibold text-slate-100">Enter your nickname</div>
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && nickname.trim()) {
+                  setNicknameConfirmed(true);
+                  if (typeof window !== "undefined") {
+                    window.localStorage.setItem(`wpg_nickname:war`, nickname.trim());
+                  }
+                }
+              }}
+              placeholder="Your name"
+              className="w-full rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-base text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
+              autoFocus
+            />
+            <button
+              type="button"
+              disabled={!nickname.trim()}
+              onClick={() => {
+                setNicknameConfirmed(true);
+                if (typeof window !== "undefined") {
+                  window.localStorage.setItem(`wpg_nickname:war`, nickname.trim());
+                }
+              }}
+              className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-base font-semibold text-slate-950 hover:bg-emerald-400 transition disabled:opacity-40"
+            >
+              Continue
+            </button>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   const meHost = state.hostId === user.id;

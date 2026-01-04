@@ -181,7 +181,7 @@ export function handleFlip(state: WarState, playerId: string): WarState {
   }
 
   if (step === "war") {
-    const burn = takeMany(myPile, 3);
+    const burn = takeMany(myPile, 1);
     const { card, rest } = shiftOne(burn.rest);
     
     if (!card) {
@@ -294,5 +294,7 @@ function resolveRound(state: WarState): WarState {
 
 export function restart(state: WarState, actorId: string): WarState {
   if (state.hostId !== actorId) return state;
-  return { ...createInitialState(state.roomId, state.hostId), players: state.players };
+  const fresh = createInitialState(state.roomId, state.hostId);
+  fresh.players = state.players;
+  return startGame(fresh);
 }
